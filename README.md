@@ -32,6 +32,7 @@ go get github.com/BrandonKS05/goneural/goneural@v1.0.0
 - Configurable layers, activations (sigmoid, ReLU, identity; softmax not implemented), and mean squared error loss
 - Forward pass (`Predict`), training with backpropagation
 - Optimizers: stochastic gradient descent, mini-batch gradient descent, batch gradient descent
+- Experimental: `ComplexStepGD`/`ComplexStepSGD`, an optimizer that estimates gradients via complex-step differentiation (perturbing weights by an imaginary step) instead of backprop; supports MSE loss with sigmoid/identity activations only
 - Optional genetic operators: copy, crossover, Gaussian mutation
 - Serialize and deserialize networks to disk (weights, biases, layer metadata)
 

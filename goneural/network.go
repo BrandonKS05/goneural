@@ -126,13 +126,16 @@ func (t DataSet) Shuffle() {
 	})
 }
 
-// Batch chunks the slice
+// Batch chunks the slice, clamping the final chunk to whatever is left
 func (t DataSet) Batch(current int, batchSize int) DataSet {
 	length := len(t)
-	end := current + batchSize
-
-	if current >= length || current == -1 || end > length {
+	if current < 0 || current >= length {
 		return DataSet{}
+	}
+
+	end := current + batchSize
+	if end > length {
+		end = length
 	}
 
 	return t[current:end] // return the current chunk

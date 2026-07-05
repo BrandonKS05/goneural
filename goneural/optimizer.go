@@ -17,8 +17,11 @@ func MBGD(batchSize int) Optimizer {
 	return func(n *NeuralNetwork, dataSet DataSet) float64 {
 		err := 0.0
 
-		for i := 0; i < len(dataSet); i++ {
+		for i := 0; i < len(dataSet); i += batchSize {
 			batch := dataSet.Batch(i, batchSize)
+			if len(batch) == 0 {
+				continue
+			}
 
 			lenLayers := len(n.Layers)
 			lenWeights := lenLayers - 1
@@ -69,13 +72,13 @@ func MBGD(batchSize int) Optimizer {
 			for i := 0; i < lenWeights; i++ {
 				deltas[i] = deltas[i].Map(
 					func(val float64, x, y int) float64 {
-						return val / float64(batchSize) // average the changes
+						return val / float64(len(batch)) // average the changes
 					},
 				)
 
 				gradients[i] = gradients[i].Map(
 					func(val float64, x, y int) float64 {
-						return val / float64(batchSize) // average the changes
+						return val / float64(len(batch)) // average the changes
 					},
 				)
 
