@@ -3,6 +3,7 @@ package goneural
 import (
 	"io/ioutil"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 
@@ -70,9 +71,11 @@ func New(learningRate float64, loss Loss, layers ...Layer) *NeuralNetwork {
 		n.Activations[i] = matrix.New(current.Nodes, 1, nil)
 	}
 
-	// Set fallbacks
+	// Set fallbacks. Checked by Name rather than F/FPrime being nil, since
+	// Softmax intentionally leaves those nil (it isn't an elementwise
+	// function) and would otherwise get silently replaced here.
 	for i := range layers {
-		if layers[i].Activator.F == nil || layers[i].Activator.FPrime == nil {
+		if layers[i].Activator.Name == "" {
 			layers[i].Activator = Identity()
 		}
 	}
@@ -98,16 +101,50 @@ func (n *NeuralNetwork) Predict(data []float64) []float64 {
 func (n *NeuralNetwork) predict(mat matrix.Matrix) matrix.Matrix {
 	n.Activations[0] = mat // add the original input
 	for i := 0; i < len(n.Weights); i++ {
-		mat = n.Weights[i].
-			Multiply(mat).                            // weighted sum of the previous layer
-			AddMatrix(n.Biases[i]).                   // bias
-			Map(func(val float64, x, y int) float64 { // activation
+		z := n.Weights[i].
+			Multiply(mat).          // weighted sum of the previous layer
+			AddMatrix(n.Biases[i]) // bias
+
+		if n.Layers[i+1].Activator.Name == softmax {
+			mat = softmaxVector(z) // softmax needs the whole vector, not just one value
+		} else {
+			mat = z.Map(func(val float64, x, y int) float64 {
 				return n.Layers[i+1].Activator.F(val)
 			})
+		}
+
 		n.Activations[i+1] = mat.Copy()
 	}
 
 	return mat
+}
+
+// softmaxVector applies softmax to a column vector: exponentiate every
+// entry and divide by their sum, so the outputs form a probability
+// distribution. Subtracting the max before exponentiating keeps large
+// inputs from overflowing math.Exp without changing the result (softmax is
+// shift-invariant).
+func softmaxVector(m matrix.Matrix) matrix.Matrix {
+	vals := m.Flatten()
+
+	max := vals[0]
+	for _, v := range vals[1:] {
+		if v > max {
+			max = v
+		}
+	}
+
+	sum := 0.0
+	exp := make([]float64, len(vals))
+	for i, v := range vals {
+		exp[i] = math.Exp(v - max)
+		sum += exp[i]
+	}
+	for i := range exp {
+		exp[i] /= sum
+	}
+
+	return matrix.Unflatten(m.Rows, m.Columns, exp)
 }
 
 // DataSet represents a slice of all the entires in a data set

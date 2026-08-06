@@ -15,3 +15,6 @@
 # vendor/
 *.gone
 *.goneural
+
+# MNIST dataset files (downloaded by examples/mnist, see its README)
+examples/mnist/data/

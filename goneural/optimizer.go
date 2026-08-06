@@ -43,29 +43,32 @@ func MBGD(batchSize int) Optimizer {
 				outputs := n.predict(inputs)
 
 				err += n.Loss.F(outputs, targets)
-				loss := n.Loss.FPrime(outputs, targets)
 
-				var currentGradients matrix.Matrix
-				var currentDeltas matrix.Matrix
+				// delta is the error signal at the current layer, with that
+				// layer's own activation derivative already folded in. It
+				// starts at the output layer and gets propagated backward
+				// (and re-folded with each layer's activation derivative)
+				// as the loop descends, per the standard backprop
+				// recurrence delta[k] = (W[k]^T . delta[k+1]) * act'[k](a[k]).
+				delta := outputDelta(n, outputs, targets)
 
 				for i := lenWeights - 1; i >= 0; i-- {
-					// Ignore the first time
-					if i < lenWeights-1 {
-						loss = n.Weights[i+1].Transpose().Multiply(loss)
-					}
-
-					currentGradients = n.Activations[i+1].
-						Map(func(val float64, x, y int) float64 {
-							return n.Layers[i+1].Activator.FPrime(val)
-						}).
-						HadamardProduct(loss).
+					currentGradients := delta.Scale(n.LearningRate)
+					currentDeltas := delta.
+						Multiply(n.Activations[i].Transpose()).
 						Scale(n.LearningRate)
-
-					currentDeltas = currentGradients.
-						Multiply(n.Activations[i].Transpose())
 
 					deltas[i] = deltas[i].AddMatrix(currentDeltas)
 					gradients[i] = gradients[i].AddMatrix(currentGradients)
+
+					if i > 0 {
+						delta = n.Weights[i].Transpose().Multiply(delta)
+						delta = n.Activations[i].
+							Map(func(val float64, x, y int) float64 {
+								return n.Layers[i].Activator.FPrime(val)
+							}).
+							HadamardProduct(delta)
+					}
 				}
 			}
 
@@ -89,6 +92,30 @@ func MBGD(batchSize int) Optimizer {
 
 		return err
 	}
+}
+
+// outputDelta computes the initial backward error signal at the output
+// layer, in the "add this direction to descend" convention MBGD, Adam, and
+// ConcurrentMBGD all share. Softmax paired with CrossEntropy gets the
+// well-known combined shortcut (target - prediction) directly -- deriving
+// the full softmax Jacobian generically isn't worth it for this library --
+// everything else goes through the generic Loss.FPrime + activation
+// derivative chain rule.
+func outputDelta(n *NeuralNetwork, outputs, targets matrix.Matrix) matrix.Matrix {
+	outputActivator := n.Layers[len(n.Layers)-1].Activator
+
+	if outputActivator.Name == softmax {
+		if n.Loss.Name != crossEntropy {
+			panic("goneural: softmax output activation requires CrossEntropy loss")
+		}
+		return targets.SubtractMatrix(outputs)
+	}
+
+	return outputs.
+		Map(func(val float64, x, y int) float64 {
+			return outputActivator.FPrime(val)
+		}).
+		HadamardProduct(n.Loss.FPrime(outputs, targets))
 }
 
 // GD is a normal gradient descent (Optimizes after the entire data set)

@@ -77,8 +77,20 @@ func Identity() Activation {
 	}
 }
 
-// Softmax is a softmax activation function
-// NOT IMPLEMENTED YET
+// Softmax is a softmax activation function. Unlike the others it isn't
+// elementwise -- every output depends on all the other values in the same
+// layer, since they all share one normalizing sum -- so F/FPrime here just
+// panic; NeuralNetwork.predict and the optimizers special-case Layers with
+// Name == softmax instead of going through the generic per-element path.
+// It should only be used on the output layer, paired with CrossEntropy.
 func Softmax() Activation {
-	panic("TODO: implement")
+	return Activation{
+		Name: softmax,
+		F: func(x float64) float64 {
+			panic("goneural: softmax can't be applied elementwise; use it only as the output layer's activation")
+		},
+		FPrime: func(x float64) float64 {
+			panic("goneural: softmax can't be applied elementwise; use it only as the output layer's activation")
+		},
+	}
 }

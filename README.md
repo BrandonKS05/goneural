@@ -29,10 +29,11 @@ go get github.com/BrandonKS05/goneural/goneural@v1.0.0
 
 ## Features
 
-- Configurable layers, activations (sigmoid, ReLU, identity; softmax not implemented), and mean squared error loss
+- Configurable layers and activations: sigmoid, ReLU, identity, and softmax (output layer only, paired with cross-entropy)
+- Losses: mean squared error, categorical cross-entropy
 - Forward pass (`Predict`), training with backpropagation
-- Optimizers: stochastic gradient descent, mini-batch gradient descent, batch gradient descent
-- Experimental: `ComplexStepGD`/`ComplexStepSGD`, an optimizer that estimates gradients via complex-step differentiation (perturbing weights by an imaginary step) instead of backprop; supports MSE loss with sigmoid/identity activations only
+- Optimizers: `SGD`, `MBGD` (mini-batch), `GD` (full batch), `Adam` (adaptive moment estimation), and `ConcurrentMBGD` (mini-batch with per-sample gradients computed in parallel goroutines)
+- Experimental: `ComplexStepGD`/`ComplexStepSGD`, an optimizer that estimates gradients via complex-step differentiation (perturbing weights by an imaginary step) instead of backprop; supports MSE loss with sigmoid/identity activations only. Also used in the test suite as an independent oracle to verify backprop's analytic gradients.
 - Optional genetic operators: copy, crossover, Gaussian mutation
 - Serialize and deserialize networks to disk (weights, biases, layer metadata)
 
@@ -66,6 +67,7 @@ g, err := goneural.Load("model.goneural")
 
 ## Examples
 
+- `examples/mnist` — handwritten digit classification (softmax + cross-entropy + Adam, ~85-90% test accuracy; see its README for dataset download)
 - `examples/xor` — XOR with a small MLP
 - `examples/perceptron` — single perceptron demo
 
