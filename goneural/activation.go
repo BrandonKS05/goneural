@@ -19,6 +19,8 @@ const (
 	id        activationName = "id"
 	tanh      activationName = "tanh"
 	leakyRelu activationName = "leaky_relu"
+	elu       activationName = "elu"
+	softplus  activationName = "softplus"
 )
 
 func getActivationFromName(a activationName) Activation {
@@ -35,6 +37,10 @@ func getActivationFromName(a activationName) Activation {
 		return Tanh()
 	case leakyRelu:
 		return LeakyReLU()
+	case elu:
+		return ELU()
+	case softplus:
+		return Softplus()
 	default:
 		return Identity()
 	}
@@ -130,6 +136,59 @@ func LeakyReLUWithAlpha(alpha float64) Activation {
 				return 1
 			}
 			return alpha
+		},
+	}
+}
+
+// ELU is the Exponential Linear Unit (Clevert et al., 2015): identity for
+// positive inputs, alpha*(e^x - 1) for negative ones. Unlike ReLU it stays
+// smooth through zero and saturates to -alpha instead of dying, which pushes
+// mean activations toward zero. Uses the conventional alpha of 1; see
+// ELUWithAlpha to pick another.
+func ELU() Activation {
+	return ELUWithAlpha(1)
+}
+
+// ELUWithAlpha is ELU with a caller-chosen negative-side scale. alpha must
+// be positive so the negative branch's derivative can be recovered from the
+// activation's output (y = alpha*(e^x - 1) gives dF/dx = y + alpha). Note
+// that Save/Load round-trips activations by name only, so a loaded network
+// falls back to the default alpha of 1.
+func ELUWithAlpha(alpha float64) Activation {
+	if alpha <= 0 {
+		panic("goneural: ELU alpha must be positive")
+	}
+
+	return Activation{
+		Name: elu,
+		F: func(x float64) float64 {
+			if x > 0 {
+				return x
+			}
+			return alpha * (math.Exp(x) - 1)
+		},
+		FPrime: func(y float64) float64 {
+			if y > 0 {
+				return 1
+			}
+			return y + alpha
+		},
+	}
+}
+
+// Softplus is a smooth approximation of ReLU: f(x) = ln(1 + e^x). It is
+// always positive and differentiable everywhere, with derivative
+// sigmoid(x), which in terms of the output y works out to 1 - e^(-y).
+func Softplus() Activation {
+	return Activation{
+		Name: softplus,
+		F: func(x float64) float64 {
+			// max(x, 0) + log1p(e^(-|x|)) is the overflow-safe rewrite of
+			// ln(1 + e^x): the exponential's argument is never positive.
+			return math.Max(x, 0) + math.Log1p(math.Exp(-math.Abs(x)))
+		},
+		FPrime: func(y float64) float64 {
+			return 1 - math.Exp(-y)
 		},
 	}
 }

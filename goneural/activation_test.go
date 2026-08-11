@@ -24,6 +24,9 @@ func TestFPrimeMatchesNumericDerivative(t *testing.T) {
 		{"tanh", Tanh()},
 		{"leaky_relu", LeakyReLU()},
 		{"leaky_relu_alpha", LeakyReLUWithAlpha(0.2)},
+		{"elu", ELU()},
+		{"elu_alpha", ELUWithAlpha(0.5)},
+		{"softplus", Softplus()},
 	}
 
 	for _, tc := range cases {
@@ -40,7 +43,7 @@ func TestFPrimeMatchesNumericDerivative(t *testing.T) {
 // TestActivationNameRoundTrip guards Save/Load: every named activation must
 // come back out of the registry under the same name.
 func TestActivationNameRoundTrip(t *testing.T) {
-	for _, act := range []Activation{Sigmoid(), ReLU(), Identity(), Tanh(), LeakyReLU()} {
+	for _, act := range []Activation{Sigmoid(), ReLU(), Identity(), Tanh(), LeakyReLU(), ELU(), Softplus()} {
 		got := getActivationFromName(act.Name)
 		if got.Name != act.Name {
 			t.Errorf("getActivationFromName(%q).Name = %q", act.Name, got.Name)
