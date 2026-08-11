@@ -78,36 +78,8 @@ func (o *MomentumOptimizer) Optimize(n *NeuralNetwork, dataSet DataSet) float64 
 			continue
 		}
 
-		weightGrads := make([]matrix.Matrix, lenWeights)
-		biasGrads := make([]matrix.Matrix, lenWeights)
-		for l := 0; l < lenWeights; l++ {
-			weightGrads[l] = matrix.New(n.Weights[l].Rows, n.Weights[l].Columns, nil)
-			biasGrads[l] = matrix.New(n.Biases[l].Rows, n.Biases[l].Columns, nil)
-		}
-
-		for _, ds := range batch {
-			outputs := n.predict(matrix.NewFromArray(ds.Inputs))
-			targets := matrix.NewFromArray(ds.Targets)
-			err += n.Loss.F(outputs, targets)
-
-			// Same backprop recurrence as MBGD, but like Adam this needs the
-			// true (positive) gradient dLoss/dw, since the velocity update
-			// works out the descent direction itself.
-			delta := outputDelta(n, outputs, targets).Scale(-1)
-			for l := lenWeights - 1; l >= 0; l-- {
-				weightGrads[l] = weightGrads[l].AddMatrix(delta.Multiply(n.Activations[l].Transpose()))
-				biasGrads[l] = biasGrads[l].AddMatrix(delta)
-
-				if l > 0 {
-					delta = n.Weights[l].Transpose().Multiply(delta)
-					delta = n.Activations[l].
-						Map(func(val float64, x, y int) float64 {
-							return n.Layers[l].Activator.FPrime(val)
-						}).
-						HadamardProduct(delta)
-				}
-			}
-		}
+		weightGrads, biasGrads, batchErr := accumulateBatchGradients(n, batch)
+		err += batchErr
 
 		avgW := make([]matrix.Matrix, lenWeights)
 		avgB := make([]matrix.Matrix, lenWeights)

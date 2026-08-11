@@ -51,38 +51,8 @@ func Adam(batchSize int) Optimizer {
 				continue
 			}
 
-			weightGrads := make([]matrix.Matrix, lenWeights)
-			biasGrads := make([]matrix.Matrix, lenWeights)
-			for l := 0; l < lenWeights; l++ {
-				weightGrads[l] = matrix.New(n.Weights[l].Rows, n.Weights[l].Columns, nil)
-				biasGrads[l] = matrix.New(n.Biases[l].Rows, n.Biases[l].Columns, nil)
-			}
-
-			for _, ds := range batch {
-				outputs := n.predict(matrix.NewFromArray(ds.Inputs))
-				targets := matrix.NewFromArray(ds.Targets)
-				err += n.Loss.F(outputs, targets)
-
-				// Same backprop recurrence as MBGD, but Adam needs the true
-				// (positive) gradient dLoss/dw rather than MBGD's
-				// pre-negated descent direction, since it works out its own
-				// per-parameter step size from the raw gradient.
-				delta := outputDelta(n, outputs, targets).Scale(-1)
-
-				for l := lenWeights - 1; l >= 0; l-- {
-					weightGrads[l] = weightGrads[l].AddMatrix(delta.Multiply(n.Activations[l].Transpose()))
-					biasGrads[l] = biasGrads[l].AddMatrix(delta)
-
-					if l > 0 {
-						delta = n.Weights[l].Transpose().Multiply(delta)
-						delta = n.Activations[l].
-							Map(func(val float64, x, y int) float64 {
-								return n.Layers[l].Activator.FPrime(val)
-							}).
-							HadamardProduct(delta)
-					}
-				}
-			}
+			weightGrads, biasGrads, batchErr := accumulateBatchGradients(n, batch)
+			err += batchErr
 
 			t++
 			biasCorrection1 := 1 - math.Pow(beta1, float64(t))
