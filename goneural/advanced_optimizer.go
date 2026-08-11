@@ -135,6 +135,122 @@ func adamWStep(gradSum, m, v []float64, batchLen int, lr, beta1, beta2, epsilon,
 	return step
 }
 
+// RMSPropOptimizer is an optimizer that uses root-mean-square scaling of
+// gradients to adapt learning rates per parameter.
+type RMSPropOptimizer struct {
+	BatchSize    int
+	LearningRate float64
+	Decay        float64
+	Epsilon      float64
+	Beta         float64
+
+	meanSquares [][]float64
+	biasSquares [][]float64
+}
+
+// NewRMSPropOptimizer creates a new RMSProp optimizer with default decay.
+func NewRMSPropOptimizer(batchSize int, learningRate float64) *RMSPropOptimizer {
+	if batchSize < 1 {
+		batchSize = 1
+	}
+
+	return &RMSPropOptimizer{
+		BatchSize:    batchSize,
+		LearningRate: learningRate,
+		Decay:        0.9,
+		Epsilon:      1e-8,
+		Beta:         0.9,
+	}
+}
+
+// RMSProp returns an Optimizer that uses RMSProp.
+func RMSProp(batchSize int, learningRate float64) Optimizer {
+	return NewRMSPropOptimizer(batchSize, learningRate).Optimize
+}
+
+// Optimize implements the Optimizer signature for RMSProp.
+func (o *RMSPropOptimizer) Optimize(n *NeuralNetwork, dataSet DataSet) float64 {
+	lenWeights := len(n.Weights)
+	if o.meanSquares == nil {
+		o.meanSquares = make([][]float64, lenWeights)
+		o.biasSquares = make([][]float64, lenWeights)
+		for l := 0; l < lenWeights; l++ {
+			o.meanSquares[l] = make([]float64, n.Weights[l].Rows*n.Weights[l].Columns)
+			o.biasSquares[l] = make([]float64, n.Biases[l].Rows)
+		}
+	}
+
+	err := 0.0
+
+	for i := 0; i < len(dataSet); i += o.BatchSize {
+		batch := dataSet.Batch(i, o.BatchSize)
+		if len(batch) == 0 {
+			continue
+		}
+
+		weightGrads := make([]matrix.Matrix, lenWeights)
+		biasGrads := make([]matrix.Matrix, lenWeights)
+		for l := 0; l < lenWeights; l++ {
+			weightGrads[l] = matrix.New(n.Weights[l].Rows, n.Weights[l].Columns, nil)
+			biasGrads[l] = matrix.New(n.Biases[l].Rows, n.Biases[l].Columns, nil)
+		}
+
+		for _, ds := range batch {
+			outputs := n.predict(matrix.NewFromArray(ds.Inputs))
+			targets := matrix.NewFromArray(ds.Targets)
+			err += n.Loss.F(outputs, targets)
+
+			delta := outputDelta(n, outputs, targets).Scale(-1)
+			for l := lenWeights - 1; l >= 0; l-- {
+				weightGrads[l] = weightGrads[l].AddMatrix(delta.Multiply(n.Activations[l].Transpose()))
+				biasGrads[l] = biasGrads[l].AddMatrix(delta)
+
+				if l > 0 {
+					delta = n.Weights[l].Transpose().Multiply(delta)
+					delta = n.Activations[l].
+						Map(func(val float64, x, y int) float64 {
+							return n.Layers[l].Activator.FPrime(val)
+						}).
+					HadamardProduct(delta)
+				}
+			}
+		}
+
+		for l := 0; l < lenWeights; l++ {
+			rows := n.Layers[l+1].Nodes
+			cols := n.Layers[l].Nodes
+
+			weightFlat := weightGrads[l].Flatten()
+			biasFlat := biasGrads[l].Flatten()
+
+			for k := range weightFlat {
+				weightFlat[k] /= float64(len(batch))
+				o.meanSquares[l][k] = o.Decay*o.meanSquares[l][k] + (1-o.Decay)*weightFlat[k]*weightFlat[k]
+			}
+
+			for k := range biasFlat {
+				biasFlat[k] /= float64(len(batch))
+				o.biasSquares[l][k] = o.Decay*o.biasSquares[l][k] + (1-o.Decay)*biasFlat[k]*biasFlat[k]
+			}
+
+			weightStep := make([]float64, len(weightFlat))
+			for k, g := range weightFlat {
+				weightStep[k] = o.LearningRate * g / (math.Sqrt(o.meanSquares[l][k]) + o.Epsilon)
+			}
+
+			biasStep := make([]float64, len(biasFlat))
+			for k, g := range biasFlat {
+				biasStep[k] = o.LearningRate * g / (math.Sqrt(o.biasSquares[l][k]) + o.Epsilon)
+			}
+
+			n.Weights[l] = n.Weights[l].SubtractMatrix(matrix.Unflatten(rows, cols, weightStep))
+			n.Biases[l] = n.Biases[l].SubtractMatrix(matrix.Unflatten(rows, 1, biasStep))
+		}
+	}
+
+	return err
+}
+
 // Trainer provides a higher-level training loop with optional early stopping.
 type Trainer struct {
 	Network       *NeuralNetwork
