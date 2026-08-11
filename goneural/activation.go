@@ -13,10 +13,12 @@ type Activation struct {
 type activationName string
 
 const (
-	sigmoid activationName = "sigmoid"
-	relu    activationName = "relu"
-	softmax activationName = "softmax"
-	id      activationName = "id"
+	sigmoid   activationName = "sigmoid"
+	relu      activationName = "relu"
+	softmax   activationName = "softmax"
+	id        activationName = "id"
+	tanh      activationName = "tanh"
+	leakyRelu activationName = "leaky_relu"
 )
 
 func getActivationFromName(a activationName) Activation {
@@ -29,6 +31,10 @@ func getActivationFromName(a activationName) Activation {
 		return Softmax()
 	case id:
 		return Identity()
+	case tanh:
+		return Tanh()
+	case leakyRelu:
+		return LeakyReLU()
 	default:
 		return Identity()
 	}
@@ -73,6 +79,57 @@ func Identity() Activation {
 		},
 		FPrime: func(_ float64) float64 {
 			return 1
+		},
+	}
+}
+
+// Tanh is the hyperbolic tangent activation function. It squashes inputs
+// into (-1, 1) much like sigmoid squashes into (0, 1), but is zero-centered,
+// which tends to keep hidden-layer gradients better behaved. FPrime, per
+// this package's convention, receives the activation's output y = tanh(x);
+// the derivative in those terms is 1 - y^2.
+func Tanh() Activation {
+	return Activation{
+		Name: tanh,
+		F:    math.Tanh,
+		FPrime: func(y float64) float64 {
+			return 1 - y*y
+		},
+	}
+}
+
+// LeakyReLU is a ReLU that lets a small gradient through for negative
+// inputs (f(x) = 0.01*x when x < 0) instead of zeroing them, which keeps
+// units from going permanently "dead" when they drift negative. Use
+// LeakyReLUWithAlpha to pick a different negative-side slope.
+func LeakyReLU() Activation {
+	return LeakyReLUWithAlpha(0.01)
+}
+
+// LeakyReLUWithAlpha is LeakyReLU with a caller-chosen negative-side slope.
+// alpha must be positive: the FPrime convention hands over the activation's
+// output, and only a sign-preserving slope lets the negative branch be
+// recovered from the output alone. Note that Save/Load round-trips
+// activations by name only, so a loaded network falls back to the default
+// 0.01 slope.
+func LeakyReLUWithAlpha(alpha float64) Activation {
+	if alpha <= 0 {
+		panic("goneural: LeakyReLU alpha must be positive")
+	}
+
+	return Activation{
+		Name: leakyRelu,
+		F: func(x float64) float64 {
+			if x > 0 {
+				return x
+			}
+			return alpha * x
+		},
+		FPrime: func(y float64) float64 {
+			if y > 0 {
+				return 1
+			}
+			return alpha
 		},
 	}
 }
