@@ -21,6 +21,15 @@ const (
 	leakyRelu activationName = "leaky_relu"
 	elu       activationName = "elu"
 	softplus  activationName = "softplus"
+	selu      activationName = "selu"
+)
+
+// The SELU constants from Klambauer et al. (2017), derived so that mean 0,
+// variance 1 inputs keep mean 0, variance 1 outputs (the "self-normalizing"
+// fixed point).
+const (
+	seluLambda = 1.0507009873554805
+	seluAlpha  = 1.6732632423543772
 )
 
 func getActivationFromName(a activationName) Activation {
@@ -41,6 +50,8 @@ func getActivationFromName(a activationName) Activation {
 		return ELU()
 	case softplus:
 		return Softplus()
+	case selu:
+		return SELU()
 	default:
 		return Identity()
 	}
@@ -172,6 +183,32 @@ func ELUWithAlpha(alpha float64) Activation {
 				return 1
 			}
 			return y + alpha
+		},
+	}
+}
+
+// SELU is the Scaled Exponential Linear Unit (Klambauer et al., 2017): an
+// ELU with alpha and an overall scale lambda pinned to the specific
+// constants that make the activation self-normalizing -- layer after
+// layer, activations are drawn back toward zero mean and unit variance
+// without batch normalization machinery. That property is derived for
+// weights initialized around zero mean; pairing it with InitXavier keeps
+// the starting point in that regime. The negative branch's derivative is
+// recovered from the output as y + lambda*alpha, mirroring ELU.
+func SELU() Activation {
+	return Activation{
+		Name: selu,
+		F: func(x float64) float64 {
+			if x > 0 {
+				return seluLambda * x
+			}
+			return seluLambda * seluAlpha * (math.Exp(x) - 1)
+		},
+		FPrime: func(y float64) float64 {
+			if y > 0 {
+				return seluLambda
+			}
+			return y + seluLambda*seluAlpha
 		},
 	}
 }
