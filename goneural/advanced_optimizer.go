@@ -93,7 +93,7 @@ func (o *AdaptiveOptimizer) Optimize(n *NeuralNetwork, dataSet DataSet) float64 
 						Map(func(val float64, x, y int) float64 {
 							return n.Layers[l].Activator.FPrime(val)
 						}).
-					HadamardProduct(delta)
+						HadamardProduct(delta)
 				}
 			}
 		}
@@ -211,7 +211,7 @@ func (o *RMSPropOptimizer) Optimize(n *NeuralNetwork, dataSet DataSet) float64 {
 						Map(func(val float64, x, y int) float64 {
 							return n.Layers[l].Activator.FPrime(val)
 						}).
-					HadamardProduct(delta)
+						HadamardProduct(delta)
 				}
 			}
 		}
