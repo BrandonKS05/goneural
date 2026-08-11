@@ -1,8 +1,11 @@
 package goneural
 
 import (
+	"math"
 	"math/rand"
 	"testing"
+
+	"github.com/BrandonKS05/goneural/matrix"
 )
 
 func TestArgMax(t *testing.T) {
@@ -59,6 +62,66 @@ func TestAccuracyBinary(t *testing.T) {
 
 	if got := n.Accuracy(data); got != 1 {
 		t.Errorf("Accuracy after training = %g, want 1", got)
+	}
+}
+
+func TestPrecisionRecallF1(t *testing.T) {
+	// Hand-built binary confusion matrix: 5 true 0s predicted 0, 1 true 0
+	// predicted 1, 2 true 1s predicted 0, 4 true 1s predicted 1.
+	confusion := matrix.New(2, 2, [][]float64{{5, 1}, {2, 4}})
+
+	if got, want := Precision(confusion, 0), 5.0/7.0; math.Abs(got-want) > 1e-12 {
+		t.Errorf("Precision(0) = %g, want %g", got, want)
+	}
+	if got, want := Recall(confusion, 0), 5.0/6.0; math.Abs(got-want) > 1e-12 {
+		t.Errorf("Recall(0) = %g, want %g", got, want)
+	}
+
+	p, r := 4.0/5.0, 4.0/6.0
+	if got, want := F1Score(confusion, 1), 2*p*r/(p+r); math.Abs(got-want) > 1e-12 {
+		t.Errorf("F1Score(1) = %g, want %g", got, want)
+	}
+
+	// Degenerate cases collapse to 0 instead of dividing by zero: class 1
+	// is never predicted (empty column) and never occurs (empty row).
+	never := matrix.New(2, 2, [][]float64{{3, 0}, {0, 0}})
+	if got := Precision(never, 1); got != 0 {
+		t.Errorf("Precision of never-predicted class = %g, want 0", got)
+	}
+	if got := Recall(never, 1); got != 0 {
+		t.Errorf("Recall of absent class = %g, want 0", got)
+	}
+	if got := F1Score(never, 1); got != 0 {
+		t.Errorf("F1 of absent class = %g, want 0", got)
+	}
+}
+
+func TestConfusionMatrixOnTrainedXOR(t *testing.T) {
+	rand.Seed(7)
+
+	n := New(0.05, MSE(),
+		Layer{Nodes: 2},
+		Layer{Nodes: 4, Activator: Sigmoid()},
+		Layer{Nodes: 1, Activator: Sigmoid()},
+	)
+
+	data := xorData()
+	optimizer := Adam(2)
+	for i := 0; i < 500; i++ {
+		optimizer(n, data)
+	}
+
+	confusion := n.ConfusionMatrix(data)
+
+	// A perfectly learned XOR puts both 0-samples and both 1-samples on
+	// the diagonal of the binary 2x2 matrix.
+	want := matrix.New(2, 2, [][]float64{{2, 0}, {0, 2}})
+	if !confusion.Equal(want) {
+		t.Fatalf("confusion matrix = %v, want %v", confusion, want)
+	}
+
+	if got := F1Score(confusion, 1); got != 1 {
+		t.Errorf("F1 on perfect classifier = %g, want 1", got)
 	}
 }
 
