@@ -25,6 +25,7 @@ const (
 	crossEntropy lossName = "cross_entropy"
 	mae          lossName = "mae"
 	huber        lossName = "huber"
+	logCosh      lossName = "log_cosh"
 	minLogProb            = 1e-12 // clamps log(0)/divide-by-0 for predictions right at the boundary
 )
 
@@ -38,6 +39,8 @@ func getLossFromname(a lossName) Loss {
 		return MAE()
 	case huber:
 		return Huber()
+	case logCosh:
+		return LogCosh()
 	default:
 		return MSE()
 	}
@@ -135,6 +138,41 @@ func HuberWithDelta(delta float64) Loss {
 						return delta
 					}
 					return -delta
+				}).
+				Divide(float64(y.Rows * y.Columns))
+		},
+	}
+}
+
+// LogCosh is the log-hyperbolic-cosine loss: log(cosh(residual)) summed
+// over the outputs. It behaves like half the squared error for small
+// residuals and like |residual| - log 2 for large ones, so it combines
+// MSE's smooth, ever-softening gradient near the target with MAE's
+// indifference to outliers -- Huber without the delta knob or the second
+// derivative's jump at the crossover.
+func LogCosh() Loss {
+	// log(cosh(x)) computed as |x| + log1p(e^(-2|x|)) - log 2, which never
+	// exponentiates a positive quantity; naive cosh overflows past |x|~710.
+	stable := func(x float64) float64 {
+		return math.Abs(x) + math.Log1p(math.Exp(-2*math.Abs(x))) - math.Ln2
+	}
+
+	return Loss{
+		Name: logCosh,
+		F: func(y, yHat matrix.Matrix) float64 {
+			return y.SubtractMatrix(yHat).
+				Map(func(val float64, x, c int) float64 {
+					return stable(val)
+				}).
+				Sum() / float64(y.Rows)
+		},
+		FPrime: func(y, yHat matrix.Matrix) matrix.Matrix {
+			// Negative gradient w.r.t. the prediction, matching MSE's
+			// descent-direction convention: d log(cosh(e))/de = tanh(e),
+			// applied to the flipped residual.
+			return yHat.SubtractMatrix(y).
+				Map(func(val float64, x, c int) float64 {
+					return math.Tanh(val)
 				}).
 				Divide(float64(y.Rows * y.Columns))
 		},

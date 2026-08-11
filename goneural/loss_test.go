@@ -27,6 +27,7 @@ func TestLossFPrimeMatchesNumericGradient(t *testing.T) {
 		{"mae", MAE()},
 		{"huber", Huber()},
 		{"huber_delta", HuberWithDelta(0.4)},
+		{"log_cosh", LogCosh()},
 	} {
 		target := matrix.NewFromArray(targets)
 
@@ -50,7 +51,7 @@ func TestLossFPrimeMatchesNumericGradient(t *testing.T) {
 // TestLossNameRoundTrip guards Save/Load: every named loss must come back
 // out of the registry under the same name.
 func TestLossNameRoundTrip(t *testing.T) {
-	for _, loss := range []Loss{MSE(), CrossEntropy(), MAE(), Huber()} {
+	for _, loss := range []Loss{MSE(), CrossEntropy(), MAE(), Huber(), LogCosh()} {
 		got := getLossFromname(loss.Name)
 		if got.Name != loss.Name {
 			t.Errorf("getLossFromname(%q).Name = %q", loss.Name, got.Name)
