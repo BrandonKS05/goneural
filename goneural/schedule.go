@@ -54,6 +54,52 @@ func CosineAnnealing(initial, min float64, period int) Schedule {
 	}
 }
 
+// PolynomialDecay sweeps the learning rate from initial down to final over
+// totalEpochs, following (1 - progress)^power: a power of 1 is a straight
+// line, higher powers decay fast early then flatten, fractional powers do
+// the reverse. From totalEpochs onward the rate holds at final.
+func PolynomialDecay(initial, final float64, totalEpochs int, power float64) Schedule {
+	if totalEpochs < 1 {
+		panic("goneural: PolynomialDecay needs a positive epoch span")
+	}
+	if power <= 0 {
+		panic("goneural: PolynomialDecay needs a positive power")
+	}
+
+	return func(epoch int) float64 {
+		if epoch < 1 {
+			epoch = 1
+		}
+		if epoch >= totalEpochs {
+			return final
+		}
+		progress := float64(epoch-1) / float64(totalEpochs-1)
+		return final + (initial-final)*math.Pow(1-progress, power)
+	}
+}
+
+// WithWarmup prefixes a schedule with warmupEpochs of linear ramp: the
+// rate climbs from base(1)/warmupEpochs up to base(1), then hands over to
+// the base schedule, which starts fresh from its own epoch 1. Warming up
+// keeps the very first updates small while adaptive optimizers' statistics
+// (and momentum) are still noise, which is when a full-size learning rate
+// does the most damage.
+func WithWarmup(base Schedule, warmupEpochs int) Schedule {
+	if warmupEpochs < 1 {
+		panic("goneural: WithWarmup needs a positive warmup span")
+	}
+
+	return func(epoch int) float64 {
+		if epoch < 1 {
+			epoch = 1
+		}
+		if epoch <= warmupEpochs {
+			return base(1) * float64(epoch) / float64(warmupEpochs)
+		}
+		return base(epoch - warmupEpochs)
+	}
+}
+
 // WithSchedule wraps an optimizer so its k-th invocation runs with the
 // network's LearningRate set to schedule(k). This drives the optimizers
 // that read n.LearningRate (SGD, MBGD, GD, Adam); for the stateful

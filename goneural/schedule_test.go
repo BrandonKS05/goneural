@@ -55,6 +55,47 @@ func TestCosineAnnealing(t *testing.T) {
 	}
 }
 
+func TestPolynomialDecay(t *testing.T) {
+	// Linear (power 1) from 1.0 to 0.2 over 5 epochs: exact endpoints and
+	// evenly spaced values between them.
+	s := PolynomialDecay(1.0, 0.2, 5, 1)
+	wants := map[int]float64{1: 1.0, 2: 0.8, 3: 0.6, 4: 0.4, 5: 0.2, 9: 0.2}
+	for epoch, want := range wants {
+		if got := s(epoch); math.Abs(got-want) > 1e-12 {
+			t.Errorf("epoch %d = %g, want %g", epoch, got, want)
+		}
+	}
+
+	// Higher powers must decay faster early on than the linear sweep.
+	quad := PolynomialDecay(1.0, 0.2, 5, 2)
+	if quad(2) >= s(2) {
+		t.Errorf("power 2 at epoch 2 = %g, expected below linear %g", quad(2), s(2))
+	}
+
+	mustPanicGoneural(t, "bad span", func() { PolynomialDecay(1, 0, 0, 1) })
+	mustPanicGoneural(t, "bad power", func() { PolynomialDecay(1, 0, 5, 0) })
+}
+
+func TestWithWarmup(t *testing.T) {
+	s := WithWarmup(StepDecay(1.0, 0.5, 2), 4)
+
+	// Linear climb to the base schedule's starting rate...
+	for epoch, want := range map[int]float64{1: 0.25, 2: 0.5, 3: 0.75, 4: 1.0} {
+		if got := s(epoch); math.Abs(got-want) > 1e-12 {
+			t.Errorf("warmup epoch %d = %g, want %g", epoch, got, want)
+		}
+	}
+
+	// ...then the base schedule runs from its own epoch 1.
+	for epoch, want := range map[int]float64{5: 1.0, 6: 1.0, 7: 0.5, 9: 0.25} {
+		if got := s(epoch); math.Abs(got-want) > 1e-12 {
+			t.Errorf("post-warmup epoch %d = %g, want %g", epoch, got, want)
+		}
+	}
+
+	mustPanicGoneural(t, "bad warmup span", func() { WithWarmup(StepDecay(1, 0.5, 1), 0) })
+}
+
 func TestWithScheduleDrivesNetworkLearningRate(t *testing.T) {
 	var seen []float64
 	fake := func(n *NeuralNetwork, dataSet DataSet) float64 {
