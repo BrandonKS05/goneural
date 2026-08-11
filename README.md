@@ -1,14 +1,3 @@
-# goneural
-
-[![Tests](https://github.com/BrandonKS05/goneural/actions/workflows/ci.yaml/badge.svg)](https://github.com/BrandonKS05/goneural/actions/workflows/ci.yaml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/BrandonKS05/goneural)](https://goreportcard.com/report/github.com/BrandonKS05/goneural)
-
-**Go Report Card:** [report](https://goreportcard.com/report/github.com/BrandonKS05/goneural) — static checks for this module.
-
-Repository: [github.com/BrandonKS05/goneural](https://github.com/BrandonKS05/goneural)
-
-A small feedforward neural network library in Go, implemented without a heavyweight ML stack. Matrix operations use the `matrix` module (see `go.mod`). Model save/load uses Protocol Buffers.
-
 ## Module
 
 ```

@@ -21,9 +21,9 @@ type Loss struct {
 type lossName string
 
 const (
-	mse           lossName = "mse"
-	crossEntropy  lossName = "cross_entropy"
-	minLogProb             = 1e-12 // clamps log(0)/divide-by-0 for predictions right at the boundary
+	mse          lossName = "mse"
+	crossEntropy lossName = "cross_entropy"
+	minLogProb            = 1e-12 // clamps log(0)/divide-by-0 for predictions right at the boundary
 )
 
 func getLossFromname(a lossName) Loss {

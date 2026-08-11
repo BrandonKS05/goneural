@@ -1,0 +1,177 @@
+package matrix
+
+import (
+	"fmt"
+	"math"
+)
+
+func (m Matrix) checkSameShape(n Matrix, op string) {
+	if m.Rows != n.Rows || m.Columns != n.Columns {
+		panic(fmt.Sprintf("matrix: %s needs equal shapes, got %dx%d and %dx%d", op, m.Rows, m.Columns, n.Rows, n.Columns))
+	}
+}
+
+// AddMatrix returns the elementwise sum m + n.
+func (m Matrix) AddMatrix(n Matrix) Matrix {
+	m.checkSameShape(n, "AddMatrix")
+	out := zeros(m.Rows, m.Columns)
+	for i, v := range m.data {
+		out.data[i] = v + n.data[i]
+	}
+	return out
+}
+
+// SubtractMatrix returns the elementwise difference m - n.
+func (m Matrix) SubtractMatrix(n Matrix) Matrix {
+	m.checkSameShape(n, "SubtractMatrix")
+	out := zeros(m.Rows, m.Columns)
+	for i, v := range m.data {
+		out.data[i] = v - n.data[i]
+	}
+	return out
+}
+
+// HadamardProduct returns the elementwise product m * n.
+func (m Matrix) HadamardProduct(n Matrix) Matrix {
+	m.checkSameShape(n, "HadamardProduct")
+	out := zeros(m.Rows, m.Columns)
+	for i, v := range m.data {
+		out.data[i] = v * n.data[i]
+	}
+	return out
+}
+
+// Add returns m with a added to every element.
+func (m Matrix) Add(a float64) Matrix {
+	out := zeros(m.Rows, m.Columns)
+	for i, v := range m.data {
+		out.data[i] = v + a
+	}
+	return out
+}
+
+// Subtract returns m with a subtracted from every element.
+func (m Matrix) Subtract(a float64) Matrix {
+	return m.Add(-a)
+}
+
+// Scale returns m with every element multiplied by a.
+func (m Matrix) Scale(a float64) Matrix {
+	out := zeros(m.Rows, m.Columns)
+	for i, v := range m.data {
+		out.data[i] = v * a
+	}
+	return out
+}
+
+// Divide returns m with every element divided by a.
+func (m Matrix) Divide(a float64) Matrix {
+	return m.Scale(1 / a)
+}
+
+// Sum returns the sum of all elements.
+func (m Matrix) Sum() float64 {
+	sum := 0.0
+	for _, v := range m.data {
+		sum += v
+	}
+	return sum
+}
+
+// Transpose returns the transposed matrix.
+func (m Matrix) Transpose() Matrix {
+	out := zeros(m.Columns, m.Rows)
+	for i := 0; i < m.Rows; i++ {
+		row := m.data[i*m.Columns : (i+1)*m.Columns]
+		for j, v := range row {
+			out.data[j*m.Rows+i] = v
+		}
+	}
+	return out
+}
+
+// Multiply returns the matrix product m x n. It panics unless m.Columns
+// equals n.Rows.
+func (m Matrix) Multiply(n Matrix) Matrix {
+	if m.Columns != n.Rows {
+		panic(fmt.Sprintf("matrix: Multiply shape mismatch, %dx%d x %dx%d", m.Rows, m.Columns, n.Rows, n.Columns))
+	}
+
+	out := zeros(m.Rows, n.Columns)
+
+	// Matrix-times-column-vector is the dominant shape in a neural network
+	// forward/backward pass, and collapses to one dot product per row.
+	if n.Columns == 1 {
+		for i := 0; i < m.Rows; i++ {
+			row := m.data[i*m.Columns : (i+1)*m.Columns]
+			sum := 0.0
+			for k, v := range row {
+				sum += v * n.data[k]
+			}
+			out.data[i] = sum
+		}
+		return out
+	}
+
+	// i-k-j order keeps all three matrices walking rows sequentially, which
+	// is far kinder to the cache than the naive i-j-k order.
+	for i := 0; i < m.Rows; i++ {
+		mRow := m.data[i*m.Columns : (i+1)*m.Columns]
+		outRow := out.data[i*n.Columns : (i+1)*n.Columns]
+		for k, mik := range mRow {
+			nRow := n.data[k*n.Columns : (k+1)*n.Columns]
+			for j, nkj := range nRow {
+				outRow[j] += mik * nkj
+			}
+		}
+	}
+	return out
+}
+
+// Det returns the determinant, computed by Gaussian elimination with
+// partial pivoting in O(n^3) time. It panics if the matrix isn't square.
+// The determinant of the empty 0x0 matrix is 1 by convention.
+func (m Matrix) Det() float64 {
+	if m.Rows != m.Columns {
+		panic(fmt.Sprintf("matrix: Det of non-square %dx%d matrix", m.Rows, m.Columns))
+	}
+
+	n := m.Rows
+	a := m.Copy()
+	det := 1.0
+
+	for col := 0; col < n; col++ {
+		// Pivot on the largest remaining entry in this column, for
+		// numerical stability.
+		pivot := col
+		largest := math.Abs(a.data[col*n+col])
+		for r := col + 1; r < n; r++ {
+			if abs := math.Abs(a.data[r*n+col]); abs > largest {
+				largest, pivot = abs, r
+			}
+		}
+		if largest == 0 {
+			return 0
+		}
+		if pivot != col {
+			for k := col; k < n; k++ {
+				a.data[pivot*n+k], a.data[col*n+k] = a.data[col*n+k], a.data[pivot*n+k]
+			}
+			det = -det
+		}
+
+		p := a.data[col*n+col]
+		det *= p
+		for r := col + 1; r < n; r++ {
+			f := a.data[r*n+col] / p
+			if f == 0 {
+				continue
+			}
+			for k := col; k < n; k++ {
+				a.data[r*n+k] -= f * a.data[col*n+k]
+			}
+		}
+	}
+
+	return det
+}

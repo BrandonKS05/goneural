@@ -7,8 +7,8 @@ import (
 	"math/rand"
 	"os"
 
-	"github.com/BrandonKS05/goneural/pb"
 	"github.com/BrandonKS05/goneural/matrix"
+	"github.com/BrandonKS05/goneural/pb"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -53,7 +53,7 @@ func New(learningRate float64, loss Loss, layers ...Layer) *NeuralNetwork {
 			current.Nodes, // the cols are the outputs of the current layer
 			nil,
 		)
-		weights.Randomize(-1, 2) // Initialize the weights randomly
+		weights.Randomize(-1, 1) // Initialize the weights randomly
 		n.Weights[i] = weights
 
 		biases := matrix.New(
@@ -61,7 +61,7 @@ func New(learningRate float64, loss Loss, layers ...Layer) *NeuralNetwork {
 			1,
 			nil,
 		)
-		biases.Randomize(-1, 2) // Initialize the biases randomly
+		biases.Randomize(-1, 1) // Initialize the biases randomly
 		n.Biases[i] = biases
 	}
 
@@ -102,7 +102,7 @@ func (n *NeuralNetwork) predict(mat matrix.Matrix) matrix.Matrix {
 	n.Activations[0] = mat // add the original input
 	for i := 0; i < len(n.Weights); i++ {
 		z := n.Weights[i].
-			Multiply(mat).          // weighted sum of the previous layer
+			Multiply(mat).         // weighted sum of the previous layer
 			AddMatrix(n.Biases[i]) // bias
 
 		if n.Layers[i+1].Activator.Name == softmax {
