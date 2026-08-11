@@ -115,6 +115,69 @@ func (m Matrix) Max() float64 {
 	return max
 }
 
+// Row returns row i as a 1 x Columns matrix.
+func (m Matrix) Row(i int) Matrix {
+	if i < 0 || i >= m.Rows {
+		panic(fmt.Sprintf("matrix: Row %d out of range for %dx%d matrix", i, m.Rows, m.Columns))
+	}
+	return Unflatten(1, m.Columns, m.data[i*m.Columns:(i+1)*m.Columns])
+}
+
+// Column returns column j as a Rows x 1 matrix.
+func (m Matrix) Column(j int) Matrix {
+	if j < 0 || j >= m.Columns {
+		panic(fmt.Sprintf("matrix: Column %d out of range for %dx%d matrix", j, m.Rows, m.Columns))
+	}
+	out := zeros(m.Rows, 1)
+	for i := 0; i < m.Rows; i++ {
+		out.data[i] = m.data[i*m.Columns+j]
+	}
+	return out
+}
+
+// RowSums returns a Rows x 1 column vector holding the sum of each row.
+func (m Matrix) RowSums() Matrix {
+	out := zeros(m.Rows, 1)
+	for i := 0; i < m.Rows; i++ {
+		sum := 0.0
+		for _, v := range m.data[i*m.Columns : (i+1)*m.Columns] {
+			sum += v
+		}
+		out.data[i] = sum
+	}
+	return out
+}
+
+// ColumnSums returns a 1 x Columns row vector holding the sum of each
+// column.
+func (m Matrix) ColumnSums() Matrix {
+	out := zeros(1, m.Columns)
+	for i := 0; i < m.Rows; i++ {
+		for j, v := range m.data[i*m.Columns : (i+1)*m.Columns] {
+			out.data[j] += v
+		}
+	}
+	return out
+}
+
+// AddColumn broadcasts a Rows x 1 column vector across m: v is added to
+// every column, the way a bias vector joins each column of a batch of
+// activations. It panics unless v has one column and matches m's rows.
+func (m Matrix) AddColumn(v Matrix) Matrix {
+	if v.Columns != 1 || v.Rows != m.Rows {
+		panic(fmt.Sprintf("matrix: AddColumn needs a %dx1 vector, got %dx%d", m.Rows, v.Rows, v.Columns))
+	}
+
+	out := zeros(m.Rows, m.Columns)
+	for i := 0; i < m.Rows; i++ {
+		add := v.data[i]
+		for j := 0; j < m.Columns; j++ {
+			out.data[i*m.Columns+j] = m.data[i*m.Columns+j] + add
+		}
+	}
+	return out
+}
+
 // Trace returns the sum of the main diagonal. It panics if the matrix isn't
 // square.
 func (m Matrix) Trace() float64 {

@@ -66,6 +66,50 @@ func TestNorm(t *testing.T) {
 	}
 }
 
+func TestRowAndColumn(t *testing.T) {
+	m := New(2, 3, [][]float64{{1, 2, 3}, {4, 5, 6}})
+
+	if got := m.Row(1); !got.Equal(New(1, 3, [][]float64{{4, 5, 6}})) {
+		t.Errorf("Row(1) = %v", got)
+	}
+	if got := m.Column(2); !got.Equal(NewFromArray([]float64{3, 6})) {
+		t.Errorf("Column(2) = %v", got)
+	}
+
+	mustPanic(t, "row out of range", func() { m.Row(2) })
+	mustPanic(t, "column out of range", func() { m.Column(-1) })
+}
+
+func TestRowAndColumnSums(t *testing.T) {
+	m := New(2, 3, [][]float64{{1, 2, 3}, {4, 5, 6}})
+
+	if got := m.RowSums(); !got.Equal(NewFromArray([]float64{6, 15})) {
+		t.Errorf("RowSums = %v, want [6 15]", got)
+	}
+	if got := m.ColumnSums(); !got.Equal(New(1, 3, [][]float64{{5, 7, 9}})) {
+		t.Errorf("ColumnSums = %v, want [5 7 9]", got)
+	}
+}
+
+func TestAddColumn(t *testing.T) {
+	m := New(2, 3, [][]float64{{1, 2, 3}, {4, 5, 6}})
+	v := NewFromArray([]float64{10, 20})
+
+	got := m.AddColumn(v)
+	want := New(2, 3, [][]float64{{11, 12, 13}, {24, 25, 26}})
+	if !got.Equal(want) {
+		t.Errorf("AddColumn = %v, want %v", got, want)
+	}
+
+	// The receiver stays untouched, per the package contract.
+	if m.At(0, 0) != 1 {
+		t.Error("AddColumn mutated its receiver")
+	}
+
+	mustPanic(t, "wrong vector shape", func() { m.AddColumn(New(1, 3, nil)) })
+	mustPanic(t, "row mismatch", func() { m.AddColumn(NewFromArray([]float64{1, 2, 3})) })
+}
+
 func TestSolve(t *testing.T) {
 	// 2x + y = 5, x + 3y = 10 has the unique solution x = 1, y = 3.
 	a := New(2, 2, [][]float64{{2, 1}, {1, 3}})
