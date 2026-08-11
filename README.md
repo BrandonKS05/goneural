@@ -18,13 +18,18 @@ go get github.com/BrandonKS05/goneural/goneural@v1.0.0
 
 ## Features
 
-- Configurable layers and activations: sigmoid, ReLU, identity, and softmax (output layer only, paired with cross-entropy)
-- Losses: mean squared error, categorical cross-entropy
+- Configurable layers and activations: sigmoid, tanh, ReLU, leaky ReLU, ELU, softplus, identity, and softmax (output layer only, paired with cross-entropy)
+- Losses: mean squared error, mean absolute error, Huber, categorical cross-entropy
 - Forward pass (`Predict`), training with backpropagation
-- Optimizers: `SGD`, `MBGD` (mini-batch), `GD` (full batch), `Adam` (adaptive moment estimation), and `ConcurrentMBGD` (mini-batch with per-sample gradients computed in parallel goroutines)
+- Optimizers: `SGD`, `MBGD` (mini-batch), `GD` (full batch), `MomentumSGD`/`NesterovSGD`, `Adam`, `AdamW` (decoupled weight decay), `Nadam`, `AMSGrad`, `RMSProp`, `AdaGrad`, `AdaDelta`, and `ConcurrentMBGD` (mini-batch with per-sample gradients computed in parallel goroutines)
+- Learning-rate schedules: step decay, exponential decay, and cosine annealing with warm restarts, composable with any optimizer via `WithSchedule`/`WithScheduleFunc`
+- Weight initialization: Xavier/Glorot (`InitXavier`) and He (`InitHe`)
+- Gradient clipping by global norm (`ClipByGlobalNorm`; the momentum optimizer wires it in through `MaxGradNorm`)
+- Metrics and helpers: `Accuracy`, `ArgMax`, `OneHot`, plus a `Trainer` with optional early stopping
 - Experimental: `ComplexStepGD`/`ComplexStepSGD`, an optimizer that estimates gradients via complex-step differentiation (perturbing weights by an imaginary step) instead of backprop; supports MSE loss with sigmoid/identity activations only. Also used in the test suite as an independent oracle to verify backprop's analytic gradients.
 - Optional genetic operators: copy, crossover, Gaussian mutation
 - Serialize and deserialize networks to disk (weights, biases, layer metadata)
+- `matrix` subpackage: dense float64 matrices with the usual elementwise and product ops plus determinant, inverse, and linear solving (Gauss-Jordan with partial pivoting)
 
 ## Usage
 
@@ -52,6 +57,20 @@ Save and load (filename extension is up to you; `.goneural` matches the project 
 ```go
 g.Save("model.goneural")
 g, err := goneural.Load("model.goneural")
+```
+
+Compose the training extras — momentum with a cosine-annealed learning rate
+and gradient clipping:
+
+```go
+o := goneural.NewMomentumOptimizer(16, 0.5, 0.9)
+o.MaxGradNorm = 5
+opt := goneural.WithScheduleFunc(o.Optimize, goneural.CosineAnnealing(0.5, 0.01, 50),
+	func(lr float64) { o.LearningRate = lr })
+
+g.InitXavier()
+g.Train(opt, data, 200)
+fmt.Println(g.Accuracy(data))
 ```
 
 ## Examples
