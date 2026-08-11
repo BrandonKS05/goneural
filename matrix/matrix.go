@@ -70,6 +70,15 @@ func Zeros(r, c int) Matrix {
 	return New(r, c, nil)
 }
 
+// Identity returns the n x n identity matrix.
+func Identity(n int) Matrix {
+	m := New(n, n, nil)
+	for i := 0; i < n; i++ {
+		m.data[i*n+i] = 1
+	}
+	return m
+}
+
 // NewFromArray returns d as a column vector: len(d) rows and one column.
 // The data is copied.
 func NewFromArray(d []float64) Matrix {

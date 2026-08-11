@@ -78,6 +78,81 @@ func (m Matrix) Sum() float64 {
 	return sum
 }
 
+// Mean returns the average of all elements. It panics on an empty matrix,
+// which has no meaningful mean.
+func (m Matrix) Mean() float64 {
+	if len(m.data) == 0 {
+		panic("matrix: Mean of empty matrix")
+	}
+	return m.Sum() / float64(len(m.data))
+}
+
+// Min returns the smallest element. It panics on an empty matrix.
+func (m Matrix) Min() float64 {
+	if len(m.data) == 0 {
+		panic("matrix: Min of empty matrix")
+	}
+	min := m.data[0]
+	for _, v := range m.data[1:] {
+		if v < min {
+			min = v
+		}
+	}
+	return min
+}
+
+// Max returns the largest element. It panics on an empty matrix.
+func (m Matrix) Max() float64 {
+	if len(m.data) == 0 {
+		panic("matrix: Max of empty matrix")
+	}
+	max := m.data[0]
+	for _, v := range m.data[1:] {
+		if v > max {
+			max = v
+		}
+	}
+	return max
+}
+
+// Trace returns the sum of the main diagonal. It panics if the matrix isn't
+// square.
+func (m Matrix) Trace() float64 {
+	if m.Rows != m.Columns {
+		panic(fmt.Sprintf("matrix: Trace of non-square %dx%d matrix", m.Rows, m.Columns))
+	}
+	sum := 0.0
+	for i := 0; i < m.Rows; i++ {
+		sum += m.data[i*m.Columns+i]
+	}
+	return sum
+}
+
+// Norm returns the Frobenius norm: the square root of the sum of every
+// element squared. For a column vector this is the ordinary Euclidean
+// length, which makes it the natural measure for gradient clipping.
+func (m Matrix) Norm() float64 {
+	sum := 0.0
+	for _, v := range m.data {
+		sum += v * v
+	}
+	return math.Sqrt(sum)
+}
+
+// Clip returns m with every element clamped into [low, high]. It panics if
+// low is greater than high.
+func (m Matrix) Clip(low, high float64) Matrix {
+	if low > high {
+		panic(fmt.Sprintf("matrix: Clip called with low %g > high %g", low, high))
+	}
+
+	out := zeros(m.Rows, m.Columns)
+	for i, v := range m.data {
+		out.data[i] = math.Min(math.Max(v, low), high)
+	}
+	return out
+}
+
 // Transpose returns the transposed matrix.
 func (m Matrix) Transpose() Matrix {
 	out := zeros(m.Columns, m.Rows)
