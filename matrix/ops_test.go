@@ -66,6 +66,57 @@ func TestNorm(t *testing.T) {
 	}
 }
 
+func TestSolve(t *testing.T) {
+	// 2x + y = 5, x + 3y = 10 has the unique solution x = 1, y = 3.
+	a := New(2, 2, [][]float64{{2, 1}, {1, 3}})
+	b := NewFromArray([]float64{5, 10})
+
+	x, ok := a.Solve(b)
+	if !ok {
+		t.Fatal("Solve reported a solvable system as singular")
+	}
+	if !x.ApproxEqual(NewFromArray([]float64{1, 3}), 1e-12) {
+		t.Fatalf("Solve = %v, want [1 3]", x)
+	}
+
+	// Multiple right-hand sides solve in one call, column by column.
+	multi, ok := a.Solve(New(2, 2, [][]float64{{5, 2}, {10, 1}}))
+	if !ok {
+		t.Fatal("Solve reported a solvable multi-RHS system as singular")
+	}
+	if !a.Multiply(multi).ApproxEqual(New(2, 2, [][]float64{{5, 2}, {10, 1}}), 1e-12) {
+		t.Fatalf("A x X != B for multi-RHS solve, got %v", multi)
+	}
+
+	if _, ok := New(2, 2, [][]float64{{1, 2}, {2, 4}}).Solve(b); ok {
+		t.Error("Solve of singular system reported ok")
+	}
+
+	mustPanic(t, "non-square", func() { New(2, 3, nil).Solve(b) })
+	mustPanic(t, "row mismatch", func() { a.Solve(NewFromArray([]float64{1, 2, 3})) })
+}
+
+func TestInverse(t *testing.T) {
+	m := New(3, 3, [][]float64{{2, 0, 1}, {1, 1, 0}, {0, 3, 1}})
+
+	inv, ok := m.Inverse()
+	if !ok {
+		t.Fatal("Inverse reported an invertible matrix as singular")
+	}
+	if !m.Multiply(inv).ApproxEqual(Identity(3), 1e-12) {
+		t.Fatalf("m x m^-1 != I, got %v", m.Multiply(inv))
+	}
+	if !inv.Multiply(m).ApproxEqual(Identity(3), 1e-12) {
+		t.Fatalf("m^-1 x m != I, got %v", inv.Multiply(m))
+	}
+
+	if _, ok := New(2, 2, [][]float64{{1, 2}, {2, 4}}).Inverse(); ok {
+		t.Error("Inverse of singular matrix reported ok")
+	}
+
+	mustPanic(t, "non-square", func() { New(2, 3, nil).Inverse() })
+}
+
 func TestClip(t *testing.T) {
 	m := New(2, 2, [][]float64{{-5, 0.5}, {2, 10}})
 	got := m.Clip(-1, 1)

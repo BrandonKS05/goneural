@@ -203,6 +203,84 @@ func (m Matrix) Multiply(n Matrix) Matrix {
 	return out
 }
 
+// Solve returns the x satisfying m * x = b, computed by Gauss-Jordan
+// elimination with partial pivoting; b may hold several right-hand sides as
+// columns. The second return value is false when m is singular (no unique
+// solution exists). It panics unless m is square with as many rows as b.
+func (m Matrix) Solve(b Matrix) (Matrix, bool) {
+	if m.Rows != m.Columns {
+		panic(fmt.Sprintf("matrix: Solve with non-square %dx%d coefficient matrix", m.Rows, m.Columns))
+	}
+	if m.Rows != b.Rows {
+		panic(fmt.Sprintf("matrix: Solve shape mismatch, %dx%d coefficients with %dx%d right-hand side", m.Rows, m.Columns, b.Rows, b.Columns))
+	}
+
+	n := m.Rows
+	a := m.Copy()
+	x := b.Copy()
+
+	for col := 0; col < n; col++ {
+		// Pivot on the largest remaining entry in this column, for
+		// numerical stability (same strategy as Det).
+		pivot := col
+		largest := math.Abs(a.data[col*n+col])
+		for r := col + 1; r < n; r++ {
+			if abs := math.Abs(a.data[r*n+col]); abs > largest {
+				largest, pivot = abs, r
+			}
+		}
+		if largest == 0 {
+			return Matrix{}, false
+		}
+		if pivot != col {
+			for k := 0; k < n; k++ {
+				a.data[pivot*n+k], a.data[col*n+k] = a.data[col*n+k], a.data[pivot*n+k]
+			}
+			for k := 0; k < x.Columns; k++ {
+				x.data[pivot*x.Columns+k], x.data[col*x.Columns+k] = x.data[col*x.Columns+k], x.data[pivot*x.Columns+k]
+			}
+		}
+
+		p := a.data[col*n+col]
+		for k := 0; k < n; k++ {
+			a.data[col*n+k] /= p
+		}
+		for k := 0; k < x.Columns; k++ {
+			x.data[col*x.Columns+k] /= p
+		}
+
+		// Eliminate the column everywhere else, reducing a to the identity
+		// and x to the solution in one sweep.
+		for r := 0; r < n; r++ {
+			if r == col {
+				continue
+			}
+			f := a.data[r*n+col]
+			if f == 0 {
+				continue
+			}
+			for k := 0; k < n; k++ {
+				a.data[r*n+k] -= f * a.data[col*n+k]
+			}
+			for k := 0; k < x.Columns; k++ {
+				x.data[r*x.Columns+k] -= f * x.data[col*x.Columns+k]
+			}
+		}
+	}
+
+	return x, true
+}
+
+// Inverse returns the multiplicative inverse of m. The second return value
+// is false when m is singular and no inverse exists. It panics if m isn't
+// square.
+func (m Matrix) Inverse() (Matrix, bool) {
+	if m.Rows != m.Columns {
+		panic(fmt.Sprintf("matrix: Inverse of non-square %dx%d matrix", m.Rows, m.Columns))
+	}
+	return m.Solve(Identity(m.Rows))
+}
+
 // Det returns the determinant, computed by Gaussian elimination with
 // partial pivoting in O(n^3) time. It panics if the matrix isn't square.
 // The determinant of the empty 0x0 matrix is 1 by convention.
