@@ -12,6 +12,11 @@ import "github.com/BrandonKS05/goneural/matrix"
 func accumulateBatchGradients(n *NeuralNetwork, batch DataSet) (weightGrads, biasGrads []matrix.Matrix, err float64) {
 	lenWeights := len(n.Weights)
 
+	// Mark the forward passes below as training so predict may apply
+	// dropout; Predict calls from user code stay inference-only.
+	n.training = true
+	defer func() { n.training = false }()
+
 	weightGrads = make([]matrix.Matrix, lenWeights)
 	biasGrads = make([]matrix.Matrix, lenWeights)
 	for l := 0; l < lenWeights; l++ {
@@ -34,14 +39,34 @@ func accumulateBatchGradients(n *NeuralNetwork, batch DataSet) (weightGrads, bia
 
 			if l > 0 {
 				delta = n.Weights[l].Transpose().Multiply(delta)
-				delta = n.Activations[l].
-					Map(func(val float64, x, y int) float64 {
-						return n.Layers[l].Activator.FPrime(val)
-					}).
-					HadamardProduct(delta)
+				delta = activationFold(n, l).HadamardProduct(delta)
 			}
 		}
 	}
 
 	return weightGrads, biasGrads, err
+}
+
+// activationFold returns the elementwise factor that carries delta through
+// layer l's activation. Without dropout that is FPrime evaluated on the
+// stored activation, per the package convention. When this sample dropped
+// units in layer l, the stored activation is the mask-scaled value
+// y~ = mask * a / keep, so the true derivative chain is recovered by
+// undoing the scale before FPrime (a = y~ * keep for survivors), masking
+// out the dropped units entirely, and re-applying the 1/keep from the
+// forward scaling.
+func activationFold(n *NeuralNetwork, l int) matrix.Matrix {
+	if n.HiddenDropout > 0 && n.dropMasks != nil && n.dropMasks[l].Rows > 0 {
+		keep := 1 - n.HiddenDropout
+		return n.Activations[l].
+			Map(func(val float64, x, y int) float64 {
+				return n.Layers[l].Activator.FPrime(val * keep)
+			}).
+			HadamardProduct(n.dropMasks[l]).
+			Scale(1 / keep)
+	}
+
+	return n.Activations[l].Map(func(val float64, x, y int) float64 {
+		return n.Layers[l].Activator.FPrime(val)
+	})
 }

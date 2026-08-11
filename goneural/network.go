@@ -27,6 +27,25 @@ type NeuralNetwork struct {
 	Layers       []Layer
 	DebugMode    bool
 	Loss         Loss
+
+	// HiddenDropout, when positive, is the probability of temporarily
+	// dropping each hidden neuron during training (inverted dropout: the
+	// survivors are scaled up by 1/keep so activation magnitudes stay
+	// unchanged in expectation). Randomly silencing co-adapted neurons is a
+	// strong regularizer on small data sets. It only takes effect through
+	// the stateful gradient optimizers (the Adam family, momentum, RMSProp,
+	// and the rest built on the shared backprop helper); Predict, MBGD-style
+	// optimizers, and ConcurrentMBGD never drop anything. As a train-time
+	// hyperparameter rather than model state, it is not serialized by
+	// Save/Load.
+	HiddenDropout float64
+
+	// training marks that the current forward pass feeds gradient
+	// computation, which is the only time dropout may fire. dropMasks holds
+	// the per-layer masks of the current sample so backprop can block
+	// gradients through dropped units.
+	training  bool
+	dropMasks []matrix.Matrix
 }
 
 // New creates a neural network
@@ -113,10 +132,43 @@ func (n *NeuralNetwork) predict(mat matrix.Matrix) matrix.Matrix {
 			})
 		}
 
+		// Dropout applies to hidden layers only -- never the output, whose
+		// values are the prediction (and, under softmax, a distribution
+		// that zeroing entries would corrupt).
+		if n.training && n.HiddenDropout > 0 && i+1 < len(n.Layers)-1 {
+			mat = n.dropLayer(i+1, mat)
+		}
+
 		n.Activations[i+1] = mat.Copy()
 	}
 
 	return mat
+}
+
+// dropLayer applies inverted dropout to one hidden layer's freshly computed
+// activations: each neuron independently survives with probability
+// keep = 1 - HiddenDropout, and survivors are scaled by 1/keep so the
+// layer's expected output is unchanged. The mask is remembered so the
+// backward pass can block gradients through the dropped units.
+func (n *NeuralNetwork) dropLayer(layer int, activations matrix.Matrix) matrix.Matrix {
+	if n.HiddenDropout >= 1 || n.HiddenDropout < 0 {
+		panic("goneural: HiddenDropout must be in [0, 1)")
+	}
+	if n.dropMasks == nil {
+		n.dropMasks = make([]matrix.Matrix, len(n.Layers))
+	}
+
+	keep := 1 - n.HiddenDropout
+	mask := matrix.New(activations.Rows, activations.Columns, nil).
+		Map(func(_ float64, x, y int) float64 {
+			if rand.Float64() < keep {
+				return 1
+			}
+			return 0
+		})
+	n.dropMasks[layer] = mask
+
+	return activations.HadamardProduct(mask).Scale(1 / keep)
 }
 
 // softmaxVector applies softmax to a column vector: exponentiate every
