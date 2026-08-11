@@ -22,6 +22,12 @@ type MomentumOptimizer struct {
 	Momentum     float64
 	Nesterov     bool
 
+	// MaxGradNorm, when positive, clips each batch's averaged gradients
+	// (weights and biases together) by global norm before they enter the
+	// velocity, so one pathological batch can't fling the velocity off --
+	// see ClipByGlobalNorm. Zero leaves gradients unclipped.
+	MaxGradNorm float64
+
 	velocityW []matrix.Matrix
 	velocityB []matrix.Matrix
 }
@@ -103,9 +109,24 @@ func (o *MomentumOptimizer) Optimize(n *NeuralNetwork, dataSet DataSet) float64 
 			}
 		}
 
+		avgW := make([]matrix.Matrix, lenWeights)
+		avgB := make([]matrix.Matrix, lenWeights)
 		for l := 0; l < lenWeights; l++ {
-			wGrad := weightGrads[l].Divide(float64(len(batch)))
-			bGrad := biasGrads[l].Divide(float64(len(batch)))
+			avgW[l] = weightGrads[l].Divide(float64(len(batch)))
+			avgB[l] = biasGrads[l].Divide(float64(len(batch)))
+		}
+
+		if o.MaxGradNorm > 0 {
+			// Clip weights and biases as one collection so the shared
+			// rescale factor keeps the overall gradient direction intact.
+			clipped := ClipByGlobalNorm(append(append([]matrix.Matrix{}, avgW...), avgB...), o.MaxGradNorm)
+			avgW = clipped[:lenWeights]
+			avgB = clipped[lenWeights:]
+		}
+
+		for l := 0; l < lenWeights; l++ {
+			wGrad := avgW[l]
+			bGrad := avgB[l]
 
 			o.velocityW[l] = o.velocityW[l].Scale(o.Momentum).AddMatrix(wGrad)
 			o.velocityB[l] = o.velocityB[l].Scale(o.Momentum).AddMatrix(bGrad)
