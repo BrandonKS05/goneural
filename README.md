@@ -18,10 +18,10 @@ go get github.com/BrandonKS05/goneural/goneural@latest
 
 ## Features
 
-- Configurable layers and activations: sigmoid, tanh, ReLU, leaky ReLU, ELU, softplus, identity, and softmax (output layer only, paired with cross-entropy)
-- Losses: mean squared error, mean absolute error, Huber, categorical cross-entropy
+- Configurable layers and activations: sigmoid, tanh, ReLU, leaky ReLU, ELU, SELU (self-normalizing), softplus, identity, and softmax (output layer only, paired with cross-entropy)
+- Losses: mean squared error, mean absolute error, Huber, log-cosh, categorical cross-entropy
 - Forward pass (`Predict`), training with backpropagation
-- Optimizers: `SGD`, `MBGD` (mini-batch), `GD` (full batch), `MomentumSGD`/`NesterovSGD`, `Adam`, `AdamW` (decoupled weight decay), `Nadam`, `AMSGrad`, `Lion` (sign momentum), `RMSProp`, `AdaGrad`, `AdaDelta`, and `ConcurrentMBGD` (mini-batch with per-sample gradients computed in parallel goroutines)
+- Optimizers: `SGD`, `MBGD` (mini-batch), `GD` (full batch), `MomentumSGD`/`NesterovSGD`, `Adam`, `AdamW` (decoupled weight decay), `Nadam`, `AMSGrad`, `Adamax` (decayed infinity norm), `RAdam` (variance-rectified, warmup-free), `AdaBelief` (steps on gradient surprise rather than magnitude), `LAMB` (per-layer trust ratios), `Adafactor` (rank-one factored second moments, `rows + cols` state per weight matrix instead of `rows * cols`), `Lion` (sign momentum), `RMSProp`, `AdaGrad`, `AdaDelta`, and `ConcurrentMBGD` (mini-batch with per-sample gradients computed in parallel goroutines)
 - Optimizer wrappers: `Lookahead` slow/fast weight averaging and `WithWeightDecay` decoupled L2, each composable with any optimizer
 - Learning-rate schedules: step, exponential and polynomial decay, cosine annealing with warm restarts, and a `WithWarmup` ramp, composable with any optimizer via `WithSchedule`/`WithScheduleFunc`
 - Regularization: inverted dropout on hidden layers (`HiddenDropout`) and gradient clipping by global norm (`ClipByGlobalNorm`; the momentum optimizer wires it in through `MaxGradNorm`)
