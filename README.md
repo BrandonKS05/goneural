@@ -10,10 +10,10 @@ Import the `goneural` package (library code lives in the `goneural` subdirectory
 import "github.com/BrandonKS05/goneural/goneural"
 ```
 
-Pin a version (recommended):
+Install:
 
 ```bash
-go get github.com/BrandonKS05/goneural/goneural@v1.0.0
+go get github.com/BrandonKS05/goneural/goneural@latest
 ```
 
 ## Features
