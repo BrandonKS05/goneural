@@ -2,3 +2,6 @@
 db.sqlite
 logs/
 *.goneural
+
+# Tooling scratch
+.playwright-mcp/
