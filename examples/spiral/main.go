@@ -29,7 +29,7 @@ func twoSpirals(n int, noise float64) goneural.DataSet {
 		phase := float64(arm) * math.Pi
 		for i := 0; i < n; i++ {
 			t := 0.25 + 2.25*float64(i)/float64(n) // radians along the arm
-			r := t / 4                            // radius grows with angle
+			r := t / 4                             // radius grows with angle
 
 			x := r*math.Cos(t*math.Pi+phase) + stdrand.NormFloat64()*noise
 			y := r*math.Sin(t*math.Pi+phase) + stdrand.NormFloat64()*noise
