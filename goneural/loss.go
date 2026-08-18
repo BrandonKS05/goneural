@@ -26,6 +26,8 @@ const (
 	mae          lossName = "mae"
 	huber        lossName = "huber"
 	logCosh      lossName = "log_cosh"
+	binaryCE     lossName = "binary_cross_entropy"
+	hinge        lossName = "hinge"
 	minLogProb            = 1e-12 // clamps log(0)/divide-by-0 for predictions right at the boundary
 )
 
@@ -41,6 +43,10 @@ func getLossFromname(a lossName) Loss {
 		return Huber()
 	case logCosh:
 		return LogCosh()
+	case binaryCE:
+		return BinaryCrossEntropy()
+	case hinge:
+		return Hinge()
 	default:
 		return MSE()
 	}
@@ -174,6 +180,108 @@ func LogCosh() Loss {
 				Map(func(val float64, x, c int) float64 {
 					return math.Tanh(val)
 				}).
+				Divide(float64(y.Rows * y.Columns))
+		},
+	}
+}
+
+// BinaryCrossEntropy is the log loss for independent yes/no outputs:
+// -[t*log(p) + (1-t)*log(1-p)] summed over the outputs. Pair it with a
+// Sigmoid output layer, whose (0, 1) range is exactly the domain it needs,
+// for binary classification or for multi-label problems where several
+// labels can be true at once -- the case Softmax and CrossEntropy, which
+// force the outputs to compete for one shared unit of probability, cannot
+// express.
+//
+// Its advantage over MSE on such outputs is the gradient. MSE's descent
+// direction is scaled by the sigmoid derivative p(1-p), which vanishes
+// exactly when the network is confidently wrong, so bad predictions learn
+// slowest. Here the 1/(p(1-p)) factor below cancels that term as the chain
+// rule folds it back in, leaving a step proportional to the raw error
+// (t - p): confidence in a wrong answer speeds learning up rather than
+// stalling it.
+func BinaryCrossEntropy() Loss {
+	// Predictions are pulled just inside (0, 1) before any logarithm or
+	// division. A saturated sigmoid rounds to exactly 0 or 1 in float64,
+	// which would otherwise produce an infinite loss and an infinite
+	// gradient rather than a merely very large one.
+	clamp := func(p float64) float64 {
+		return math.Min(math.Max(p, minLogProb), 1-minLogProb)
+	}
+
+	return Loss{
+		Name: binaryCE,
+		F: func(y, yHat matrix.Matrix) float64 {
+			pred := y.Flatten()
+			truth := yHat.Flatten()
+
+			sum := 0.0
+			for i, p := range pred {
+				p = clamp(p)
+				sum -= truth[i]*math.Log(p) + (1-truth[i])*math.Log(1-p)
+			}
+			return sum / float64(y.Rows)
+		},
+		FPrime: func(y, yHat matrix.Matrix) matrix.Matrix {
+			pred := y.Flatten()
+			truth := yHat.Flatten()
+
+			// Negative gradient w.r.t. the prediction, matching MSE's
+			// descent-direction convention: -dL/dp is (t - p)/(p(1-p)).
+			out := make([]float64, len(pred))
+			for i, p := range pred {
+				p = clamp(p)
+				out[i] = (truth[i] - p) / (p * (1 - p))
+			}
+			return matrix.Unflatten(y.Rows, y.Columns, out).
+				Divide(float64(y.Rows * y.Columns))
+		},
+	}
+}
+
+// Hinge is the max-margin loss support vector machines are built on:
+// max(0, 1 - t*p), summed over the outputs, for targets t of -1 and +1 and
+// an unsquashed prediction p (use an Identity or Tanh output layer, not
+// Sigmoid or Softmax). Note that this is the one loss here whose targets
+// are not 0/1 -- OneHot labels will not do.
+//
+// What sets it apart from the log losses is that it stops caring. Once a
+// sample is on the right side of the boundary by a margin of 1, its
+// gradient is exactly zero and it drops out of training entirely; only the
+// points near the boundary -- the support vectors -- still pull on the
+// weights. Cross-entropy, by contrast, keeps pushing every correctly
+// classified point further from the boundary forever. The trade is that
+// the loss is not smooth at the margin and its gradient carries no measure
+// of confidence, just a direction.
+func Hinge() Loss {
+	return Loss{
+		Name: hinge,
+		F: func(y, yHat matrix.Matrix) float64 {
+			pred := y.Flatten()
+			truth := yHat.Flatten()
+
+			sum := 0.0
+			for i, p := range pred {
+				sum += math.Max(0, 1-truth[i]*p)
+			}
+			return sum / float64(y.Rows)
+		},
+		FPrime: func(y, yHat matrix.Matrix) matrix.Matrix {
+			pred := y.Flatten()
+			truth := yHat.Flatten()
+
+			// Negative gradient w.r.t. the prediction, matching MSE's
+			// descent-direction convention: push toward the target's sign
+			// while the margin is violated, and nothing once it is met.
+			// The kink at exactly 1 is resolved in favour of the inactive
+			// branch, the usual subgradient choice.
+			out := make([]float64, len(pred))
+			for i, p := range pred {
+				if truth[i]*p < 1 {
+					out[i] = truth[i]
+				}
+			}
+			return matrix.Unflatten(y.Rows, y.Columns, out).
 				Divide(float64(y.Rows * y.Columns))
 		},
 	}
