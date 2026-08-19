@@ -27,13 +27,13 @@ go get github.com/BrandonKS05/goneural/goneural@latest
 - Regularization: inverted dropout on hidden layers (`HiddenDropout`) and gradient clipping by global norm (`ClipByGlobalNorm`; the momentum optimizer wires it in through `MaxGradNorm`)
 - Weight initialization: Xavier/Glorot (`InitXavier`) and He (`InitHe`)
 - `LRFinder`, the learning-rate range test: ramp the rate geometrically over a throwaway copy of the network, then read the rate to train at off the resulting curve with `Suggest`
-- Data preparation: `FitStandardizer`/`FitMinMaxScaler` feature scaling (fit on train, `Transform` both splits), `FitPCA` dimensionality reduction with optional whitening, `Mixup` convex-combination augmentation, and `Bootstrap` resampling
+- Data preparation: `FitStandardizer`/`FitMinMaxScaler` feature scaling (fit on train, `Transform` both splits), `Mixup` convex-combination augmentation, and `Bootstrap` resampling
 - `Ensemble` committees polled by soft (`Predict`) or hard (`Vote`) voting, trained with `Bag` bootstrap aggregation
 - Metrics and helpers: `Accuracy`, `TopKAccuracy`, `MeanLoss`, `ROCAUC`, `R2Score`, `ConfusionMatrix` with `Precision`/`Recall`/`F1Score`/`MatthewsCorrCoef`, `ArgMax`, `OneHot`, `LogSumExp`, `SoftmaxWithTemperature`, data-set `Split`/`KFold`, plus a `Trainer` with optional early stopping
 - Experimental: `ComplexStepGD`/`ComplexStepSGD`, an optimizer that estimates gradients via complex-step differentiation (perturbing weights by an imaginary step) instead of backprop; supports MSE loss with sigmoid/identity activations only. Also used in the test suite as an independent oracle to verify backprop's analytic gradients.
 - Optional genetic operators: copy, crossover, Gaussian mutation
 - Serialize and deserialize networks to disk (weights, biases, layer metadata)
-- `matrix` subpackage: dense float64 matrices with the usual elementwise and product ops, row/column extraction and sums, clipping, norms, plus determinant, inverse, linear solving (Gauss-Jordan with partial pivoting), and the eigendecomposition of symmetric matrices (`SymmetricEigen`, cyclic Jacobi)
+- `matrix` subpackage: dense float64 matrices with the usual elementwise and product ops, row/column extraction and sums, clipping, norms, plus determinant, inverse, and linear solving (Gauss-Jordan with partial pivoting)
 
 ## Usage
 
@@ -103,18 +103,6 @@ scaler := goneural.FitStandardizer(train)
 train, test = scaler.Transform(train), scaler.Transform(test)
 
 g.Predict(scaler.TransformInputs(liveInputs))
-```
-
-Or drop the input width altogether, keeping the directions the data
-actually varies in — check what the reduction costs before committing to
-it:
-
-```go
-pca := goneural.FitPCA(train, 10) // 10 components out of however many features
-pca.Whiten = true                 // uncorrelated *and* unit-variance inputs
-
-fmt.Println(pca.ExplainedVarianceRatio()) // e.g. [0.41 0.22 0.13 ...]
-train, test = pca.Transform(train), pca.Transform(test)
 ```
 
 ## Examples
