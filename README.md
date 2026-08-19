@@ -33,6 +33,7 @@ go get github.com/BrandonKS05/goneural/goneural@latest
 - Experimental: `ComplexStepGD`/`ComplexStepSGD`, an optimizer that estimates gradients via complex-step differentiation (perturbing weights by an imaginary step) instead of backprop; supports MSE loss with sigmoid/identity activations only. Also used in the test suite as an independent oracle to verify backprop's analytic gradients.
 - Optional genetic operators: copy, crossover, Gaussian mutation
 - Serialize and deserialize networks to disk (weights, biases, layer metadata)
+- `autograd` subpackage: a reverse-mode automatic differentiation engine over matrices. Build any expression out of its operations and call `Backward` on the scalar at the end; every node's gradient falls out of the chain rule rather than a hand-written recurrence. Includes `SGD`/`Adam` over graph parameters, activations the fixed architecture cannot express (`GELU` is not invertible from its output), and `AttentionHead` — scaled dot-product self-attention with optional causal masking, assembled purely from those operations, plus `Weights` to read the distribution a head actually used
 - `matrix` subpackage: dense float64 matrices with the usual elementwise and product ops, row/column extraction and sums, clipping, norms, plus determinant, inverse, and linear solving (Gauss-Jordan with partial pivoting)
 
 ## Usage
@@ -111,7 +112,32 @@ g.Predict(scaler.TransformInputs(liveInputs))
 - `examples/xor` — XOR with a small MLP
 - `examples/spiral` — two interleaved spirals, cross-validated (Nadam, dropout, warm restarts; data generated in-process, nothing to download)
 - `examples/moons` — noisy two-moons classification end to end: feature scaling, a learning-rate range test, mixup, SWA, and a bagged ensemble scored by AUC and MCC
+- `examples/attention` — one attention head trained on a retrieval task, printing the distribution it learned to look through (100% accuracy against 25% chance)
 - `examples/perceptron` — single perceptron demo
+
+## Autodiff
+
+The `goneural` package hard-codes one architecture — a stack of dense
+layers whose gradient is written out by hand. The `autograd` subpackage
+lifts that ceiling: operations record how they were computed, so an
+expression differentiates itself.
+
+```go
+w := autograd.Param(weights)
+b := autograd.Param(biases)
+
+hidden := autograd.Tanh(autograd.AddBias(autograd.MatMul(w, autograd.Const(inputs)), b))
+loss := autograd.SoftmaxCrossEntropy(hidden, autograd.Const(targets))
+
+autograd.ZeroGrad(w, b)
+loss.Backward()          // fills in w.Grad and b.Grad
+optimizer.Step(w, b)
+```
+
+Every gradient in the package is verified against central finite
+differences in the tests, including a whole attention head — a check that
+knows nothing about the chain rule and so can only pass if the backward
+closures really are the derivative of the forward code.
 
 ## Requirements
 
