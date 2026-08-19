@@ -84,13 +84,32 @@ func (a *AttentionHead) Parameters() []*Node {
 // causal mask (see CausalMask) stops a position from attending to the
 // future without any special handling in the softmax itself.
 func (a *AttentionHead) Forward(input *Node, mask *Node) *Node {
+	// Each output column is the value-weighted average its query asked for.
+	return MatMul(MatMul(a.Value, input), a.weights(input, mask))
+}
+
+// Weights returns the attention distribution itself, of shape
+// positions x positions, where entry (i, j) is how much query j draws from
+// key i -- so each column is one position's distribution over the
+// sequence, and reading a column tells you where that position looked.
+//
+// It is the head's explanation of its own output, and unusually cheap to
+// get: unlike a dense layer, whose behaviour is spread across a weight
+// matrix, an attention head's routing decision is an explicit,
+// inspectable probability distribution recomputed for every input.
+func (a *AttentionHead) Weights(input *Node, mask *Node) matrix.Matrix {
+	return a.weights(input, mask).Value
+}
+
+// weights builds the softmax-normalized score matrix shared by Forward and
+// Weights.
+func (a *AttentionHead) weights(input *Node, mask *Node) *Node {
 	if input.Value.Rows != a.Value.Value.Columns {
 		panic("autograd: attention input does not match the model dimension")
 	}
 
 	q := MatMul(a.Query, input) // head x positions
 	k := MatMul(a.Key, input)   // head x positions
-	v := MatMul(a.Value, input) // model x positions
 
 	// scores[i][j] is how much position j's query matches position i's key,
 	// so each *column* holds one query's scores over all keys -- which is
@@ -103,10 +122,7 @@ func (a *AttentionHead) Forward(input *Node, mask *Node) *Node {
 		scores = Add(scores, mask)
 	}
 
-	weights := Softmax(scores) // positions x positions, columns sum to 1
-
-	// Each output column is the value-weighted average its query asked for.
-	return MatMul(v, weights)
+	return Softmax(scores) // positions x positions, columns sum to 1
 }
 
 // CausalMask returns the positions x positions additive mask that stops

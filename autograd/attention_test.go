@@ -78,9 +78,7 @@ func TestAttentionWeightsAreDistributions(t *testing.T) {
 
 	a := NewAttentionHead(4, 3)
 	input := Const(randomMatrix(4, 5))
-
-	scores := Scale(MatMul(Transpose(MatMul(a.Key, input)), MatMul(a.Query, input)), a.scale)
-	weights := Softmax(scores).Value
+	weights := a.Weights(input, nil)
 
 	for j := 0; j < weights.Columns; j++ {
 		sum := 0.0
@@ -239,6 +237,31 @@ func TestAttentionLearnsToRetrieve(t *testing.T) {
 	// to find the flagged position.
 	if accuracy := float64(correct) / trials; accuracy < 0.95 {
 		t.Errorf("retrieval accuracy %.3f over %d trials, want the head to solve the task", accuracy, trials)
+	}
+}
+
+// TestMaskedWeightsAreZeroAhead reads the mask's effect straight off the
+// reported distribution: a query must place no weight on a later position.
+func TestMaskedWeightsAreZeroAhead(t *testing.T) {
+	rand.Seed(7)
+
+	const positions = 5
+
+	a := NewAttentionHead(3, 2)
+	weights := a.Weights(Const(randomMatrix(3, positions)), CausalMask(positions))
+
+	for query := 0; query < positions; query++ {
+		sum := 0.0
+		for key := 0; key < positions; key++ {
+			w := weights.At(key, query)
+			if key > query && w > 1e-9 {
+				t.Errorf("query %d put weight %g on the later position %d", query, w, key)
+			}
+			sum += w
+		}
+		if math.Abs(sum-1) > 1e-12 {
+			t.Errorf("query %d's masked weights sum to %g, want 1", query, sum)
+		}
 	}
 }
 
