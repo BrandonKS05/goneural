@@ -33,7 +33,7 @@ go get github.com/BrandonKS05/goneural/goneural@latest
 - Experimental: `ComplexStepGD`/`ComplexStepSGD`, an optimizer that estimates gradients via complex-step differentiation (perturbing weights by an imaginary step) instead of backprop; supports MSE loss with sigmoid/identity activations only. Also used in the test suite as an independent oracle to verify backprop's analytic gradients.
 - Optional genetic operators: copy, crossover, Gaussian mutation
 - Serialize and deserialize networks to disk (weights, biases, layer metadata)
-- `autograd` subpackage: a reverse-mode automatic differentiation engine over matrices. Build any expression out of its operations and call `Backward` on the scalar at the end; every node's gradient falls out of the chain rule rather than a hand-written recurrence. Includes `SGD`/`Adam` over graph parameters, activations the fixed architecture cannot express (`GELU` is not invertible from its output), and `AttentionHead` — scaled dot-product self-attention with optional causal masking, assembled purely from those operations, plus `Weights` to read the distribution a head actually used
+- `autograd` subpackage: a reverse-mode automatic differentiation engine over matrices. Build any expression out of its operations and call `Backward` on the scalar at the end; every node's gradient falls out of the chain rule rather than a hand-written recurrence. It carries `SGD`/`Adam` over graph parameters, activations the fixed architecture cannot express (`GELU` is not invertible from its output), layers (`Linear`, `LayerNorm`, `Dropout`, `Embedding`, sinusoidal `PositionalEncoding`), and the transformer stack itself: `AttentionHead` and `MultiHeadAttention` with optional causal masking, `Weights` to read the distribution a head actually used, and `TransformerBlock` — pre-norm attention and feed-forward halves joined by residuals
 - `matrix` subpackage: dense float64 matrices with the usual elementwise and product ops, row/column extraction and sums, clipping, norms, plus determinant, inverse, and linear solving (Gauss-Jordan with partial pivoting)
 
 ## Usage
@@ -113,6 +113,7 @@ g.Predict(scaler.TransformInputs(liveInputs))
 - `examples/spiral` — two interleaved spirals, cross-validated (Nadam, dropout, warm restarts; data generated in-process, nothing to download)
 - `examples/moons` — noisy two-moons classification end to end: feature scaling, a learning-rate range test, mixup, SWA, and a bagged ensemble scored by AUC and MCC
 - `examples/attention` — one attention head trained on a retrieval task, printing the distribution it learned to look through (100% accuracy against 25% chance)
+- `examples/tinylm` — a character-level transformer language model: embeddings, positional encoding, two causally-masked blocks, trained to a perplexity of ~1.2 in about 15 seconds, then generating text and printing its own attention map
 - `examples/perceptron` — single perceptron demo
 
 ## Autodiff
@@ -135,9 +136,24 @@ optimizer.Step(w, b)
 ```
 
 Every gradient in the package is verified against central finite
-differences in the tests, including a whole attention head — a check that
-knows nothing about the chain rule and so can only pass if the backward
-closures really are the derivative of the forward code.
+differences in the tests — a check that knows nothing about the chain rule
+and so can only pass if the backward closures really are the derivative of
+the forward code. That covers not just the individual operations but a
+whole transformer block, every parameter of it at once.
+
+The stack goes all the way up. `examples/tinylm` assembles a working
+character-level language model out of these pieces:
+
+```go
+x := autograd.Add(embedding.Forward(ids), autograd.PositionalEncoding(width, len(ids)))
+
+mask := autograd.CausalMask(len(ids))
+for _, block := range blocks {
+	x = block.Forward(x, mask, training)
+}
+
+logits := readout.Forward(finalNorm.Forward(x))
+```
 
 ## Requirements
 
