@@ -88,6 +88,71 @@ func AddBias(x, bias *Node) *Node {
 	}, x, bias)
 }
 
+// ScaleRows is the multiplicative counterpart of AddBias: a column vector
+// scales every column of x, one factor per feature row. Like AddBias, what
+// broadcasts forward sums backward, so the scale's gradient is the row-wise
+// sum of the incoming gradient weighted by x.
+func ScaleRows(x, scale *Node) *Node {
+	if scale.Value.Columns != 1 || scale.Value.Rows != x.Value.Rows {
+		panic("autograd: ScaleRows needs a column vector matching x's rows")
+	}
+
+	value := x.Value.Map(func(v float64, i, _ int) float64 {
+		return v * scale.Value.At(i, 0)
+	})
+
+	return newNode(value, func(grad matrix.Matrix) {
+		push(x, grad.Map(func(g float64, i, _ int) float64 {
+			return g * scale.Value.At(i, 0)
+		}))
+		push(scale, grad.HadamardProduct(x.Value).RowSums())
+	}, x, scale)
+}
+
+// ConcatRows stacks nodes vertically into one taller matrix; they must all
+// have the same number of columns. Backward simply slices the incoming
+// gradient back into the pieces it came from -- which is what lets several
+// attention heads be computed separately and then treated as one vector.
+func ConcatRows(nodes ...*Node) *Node {
+	if len(nodes) == 0 {
+		panic("autograd: ConcatRows needs at least one node")
+	}
+
+	columns := nodes[0].Value.Columns
+	rows := 0
+	for _, n := range nodes {
+		if n.Value.Columns != columns {
+			panic("autograd: ConcatRows needs a matching column count")
+		}
+		rows += n.Value.Rows
+	}
+
+	value := matrix.New(rows, columns, nil)
+	offset := 0
+	for _, n := range nodes {
+		for i := 0; i < n.Value.Rows; i++ {
+			for j := 0; j < columns; j++ {
+				value.Set(offset+i, j, n.Value.At(i, j))
+			}
+		}
+		offset += n.Value.Rows
+	}
+
+	return newNode(value, func(grad matrix.Matrix) {
+		offset := 0
+		for _, n := range nodes {
+			piece := matrix.New(n.Value.Rows, columns, nil)
+			for i := 0; i < n.Value.Rows; i++ {
+				for j := 0; j < columns; j++ {
+					piece.Set(i, j, grad.At(offset+i, j))
+				}
+			}
+			push(n, piece)
+			offset += n.Value.Rows
+		}
+	}, nodes...)
+}
+
 // Scale multiplies by a constant.
 func Scale(a *Node, k float64) *Node {
 	return newNode(a.Value.Scale(k), func(grad matrix.Matrix) {
