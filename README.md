@@ -34,6 +34,7 @@ go get github.com/BrandonKS05/goneural/goneural@latest
 - Optional genetic operators: copy, crossover, Gaussian mutation
 - Serialize and deserialize networks to disk (weights, biases, layer metadata)
 - `autograd` subpackage: a reverse-mode automatic differentiation engine over matrices. Build any expression out of its operations and call `Backward` on the scalar at the end; every node's gradient falls out of the chain rule rather than a hand-written recurrence. It carries `SGD`/`Adam` over graph parameters, activations the fixed architecture cannot express (`GELU` is not invertible from its output), layers (`Linear`, `LayerNorm`, `Dropout`, `Embedding`, sinusoidal `PositionalEncoding`), and all three major architecture families: `AttentionHead`/`MultiHeadAttention` with causal masking and `TransformerBlock` (pre-norm, residual); `Conv2D`/`MaxPool2D`/`Flatten` for convolutional stacks (im2col, so a convolution is one matrix multiply); and `LSTMCell` for sequences, where backpropagation through time is just the engine walking a longer graph. `ClipGradients` rescales a whole parameter set by its global norm
+- `tokenizer` subpackage: byte-pair encoding trained from a corpus — start from the 256 byte values, repeatedly fuse the most frequent adjacent pair, and common words end up as single tokens while rare ones decompose into familiar fragments. Nothing is ever out of vocabulary, so `Decode(Encode(text))` is exact for any input, emoji and invalid UTF-8 included; `CompressionRatio` reports what the vocabulary bought
 - `matrix` subpackage: dense float64 matrices with the usual elementwise and product ops, row/column extraction and sums, clipping, norms, plus determinant, inverse, and linear solving (Gauss-Jordan with partial pivoting)
 
 ## Usage
@@ -115,6 +116,7 @@ g.Predict(scaler.TransformInputs(liveInputs))
 - `examples/attention` — one attention head trained on a retrieval task, printing the distribution it learned to look through (100% accuracy against 25% chance)
 - `examples/tinylm` — a character-level transformer language model: embeddings, positional encoding, two causally-masked blocks, trained to a perplexity of ~1.2 in about 15 seconds, then generating text and printing its own attention map
 - `examples/convnet` — a convolutional classifier on noisy shapes drawn at random positions (~95% on five classes in about a second), printing the 3x3 filters it learned and where they fired
+- `examples/tokenizer` — trains a BPE vocabulary and shows what it learned: the merges, the segmentation of a sentence, and how compression falls off on unfamiliar text
 - `examples/perceptron` — single perceptron demo
 
 ## Autodiff
