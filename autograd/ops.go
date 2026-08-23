@@ -58,6 +58,26 @@ func Mul(a, b *Node) *Node {
 	}, a, b)
 }
 
+// Div returns a / b elementwise. The denominator's gradient carries the
+// quotient rule's minus sign: raising a divisor lowers the result.
+func Div(a, b *Node) *Node {
+	checkSameShape(a, b, "Div")
+
+	value := a.Value.Map(func(v float64, i, j int) float64 {
+		return v / b.Value.At(i, j)
+	})
+
+	return newNode(value, func(grad matrix.Matrix) {
+		push(a, grad.Map(func(g float64, i, j int) float64 {
+			return g / b.Value.At(i, j)
+		}))
+		push(b, grad.Map(func(g float64, i, j int) float64 {
+			d := b.Value.At(i, j)
+			return -g * a.Value.At(i, j) / (d * d)
+		}))
+	}, a, b)
+}
+
 // MatMul returns the matrix product a . b. Its backward pass is the one
 // worth memorizing: with C = A B, the gradient of A is G B^T and the
 // gradient of B is A^T G -- each factor's gradient is the incoming one
@@ -151,6 +171,78 @@ func ConcatRows(nodes ...*Node) *Node {
 			offset += n.Value.Rows
 		}
 	}, nodes...)
+}
+
+// GatherColumns selects columns of x by index, in the order given, and may
+// repeat or omit them. Backward adds each selected column's gradient back
+// where it came from, so a column picked twice collects both.
+//
+// Together with ScatterColumns this is what lets part of a batch be routed
+// down one path and the rest down another -- the machinery a sparse
+// mixture of experts needs, and the reason those two functions exist.
+func GatherColumns(x *Node, indices []int) *Node {
+	if len(indices) == 0 {
+		panic("autograd: GatherColumns needs at least one index")
+	}
+
+	rows, width := x.Value.Rows, x.Value.Columns
+	value := matrix.New(rows, len(indices), nil)
+	for out, index := range indices {
+		if index < 0 || index >= width {
+			panic("autograd: GatherColumns index out of range")
+		}
+		for i := 0; i < rows; i++ {
+			value.Set(i, out, x.Value.At(i, index))
+		}
+	}
+
+	picked := append([]int(nil), indices...)
+
+	return newNode(value, func(grad matrix.Matrix) {
+		full := matrix.New(rows, width, nil)
+		for out, index := range picked {
+			for i := 0; i < rows; i++ {
+				full.Set(i, index, full.At(i, index)+grad.At(i, out))
+			}
+		}
+		push(x, full)
+	}, x)
+}
+
+// ScatterColumns places x's columns at the given indices of a wider,
+// otherwise zero matrix -- the inverse of GatherColumns. Repeated indices
+// accumulate, so scattering several experts' outputs and adding them is
+// well defined.
+func ScatterColumns(x *Node, indices []int, width int) *Node {
+	if len(indices) != x.Value.Columns {
+		panic("autograd: ScatterColumns needs one index per column")
+	}
+	if width < 1 {
+		panic("autograd: ScatterColumns needs a positive width")
+	}
+
+	rows := x.Value.Rows
+	value := matrix.New(rows, width, nil)
+	for from, index := range indices {
+		if index < 0 || index >= width {
+			panic("autograd: ScatterColumns index out of range")
+		}
+		for i := 0; i < rows; i++ {
+			value.Set(i, index, value.At(i, index)+x.Value.At(i, from))
+		}
+	}
+
+	placed := append([]int(nil), indices...)
+
+	return newNode(value, func(grad matrix.Matrix) {
+		back := matrix.New(rows, len(placed), nil)
+		for from, index := range placed {
+			for i := 0; i < rows; i++ {
+				back.Set(i, from, grad.At(i, index))
+			}
+		}
+		push(x, back)
+	}, x)
 }
 
 // Scale multiplies by a constant.
