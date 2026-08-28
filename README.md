@@ -28,7 +28,9 @@ go get github.com/BrandonKS05/goneural/goneural@latest
 - Weight initialization: Xavier/Glorot (`InitXavier`) and He (`InitHe`)
 - `LRFinder`, the learning-rate range test: ramp the rate geometrically over a throwaway copy of the network, then read the rate to train at off the resulting curve with `Suggest`
 - Data preparation: `FitStandardizer`/`FitMinMaxScaler` feature scaling (fit on train, `Transform` both splits), `Mixup` convex-combination augmentation, and `Bootstrap` resampling
-- `Ensemble` committees polled by soft (`Predict`) or hard (`Vote`) voting, trained with `Bag` bootstrap aggregation
+- `Ensemble` committees polled by soft (`Predict`) or hard (`Vote`) voting, trained with `Bag` bootstrap aggregation or collected for free along one cyclic run with `SnapshotOptimizer`
+- Uncertainty and calibration: `PredictSamples` for Monte Carlo dropout spread, `Entropy`/`PredictiveEntropy`, `ExpectedCalibrationError` and `Reliability` to measure overconfidence, and `Calibrate`/`CalibratedPredict` to fit the one-parameter temperature that fixes it without moving accuracy
+- Interpretability: `FeatureImportance` and `AccuracyImportance` score each input by what breaking it costs, reading nothing from the weights
 - Metrics and helpers: `Accuracy`, `TopKAccuracy`, `MeanLoss`, `ROCAUC`, `R2Score`, `ConfusionMatrix` with `Precision`/`Recall`/`F1Score`/`MatthewsCorrCoef`, `ArgMax`, `OneHot`, `LogSumExp`, `SoftmaxWithTemperature`, data-set `Split`/`KFold`, plus a `Trainer` with optional early stopping
 - Experimental: `ComplexStepGD`/`ComplexStepSGD`, an optimizer that estimates gradients via complex-step differentiation (perturbing weights by an imaginary step) instead of backprop; supports MSE loss with sigmoid/identity activations only. Also used in the test suite as an independent oracle to verify backprop's analytic gradients.
 - Optional genetic operators: copy, crossover, Gaussian mutation
