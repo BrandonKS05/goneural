@@ -205,6 +205,49 @@ func (t DataSet) Mixup(alpha float64) DataSet {
 	return out
 }
 
+// SmoothLabels returns a fresh data set in which every target is pulled a
+// step epsilon toward the uniform distribution (Szegedy et al., 2016): a
+// one-hot label over k classes becomes 1 - epsilon + epsilon/k for the
+// true class and epsilon/k elsewhere. 0.1 is the usual epsilon.
+//
+// The reason to want this is what a hard 1 asks of cross-entropy: it is
+// only minimized at infinite logits, so training keeps sharpening
+// confidence long after the ranking has stopped improving -- the
+// overconfidence ExpectedCalibrationError measures and Calibrate corrects
+// after the fact. A smoothed target gives the loss a finite optimum to
+// actually reach; it is the training-time counterpart to temperature
+// scaling, and the two compose. The cost is deliberate: the network is
+// never allowed to claim certainty, however clear the sample.
+//
+// It smooths targets, not inputs, so it composes with Mixup and works
+// unchanged through Softmax/CrossEntropy (whose shortcut gradient
+// prediction - target is exact for any target distribution) as well as the
+// sigmoid losses. A lone output is read as the probability of the positive
+// class, so its uniform point is 1/2 rather than 1/1 -- without that, a
+// single-output 1 would not move at all.
+func (t DataSet) SmoothLabels(epsilon float64) DataSet {
+	if epsilon <= 0 || epsilon >= 1 {
+		panic("goneural: SmoothLabels epsilon must be in (0, 1)")
+	}
+
+	out := make(DataSet, len(t))
+	for i, ds := range t {
+		uniform := 1 / math.Max(float64(len(ds.Targets)), 2)
+
+		targets := make([]float64, len(ds.Targets))
+		for j, v := range ds.Targets {
+			targets[j] = v*(1-epsilon) + epsilon*uniform
+		}
+
+		out[i] = DataSample{
+			Inputs:  append([]float64(nil), ds.Inputs...),
+			Targets: targets,
+		}
+	}
+
+	return out
+}
+
 // blend returns lambda*a + (1-lambda)*b elementwise.
 func blend(a, b []float64, lambda float64) []float64 {
 	out := make([]float64, len(a))

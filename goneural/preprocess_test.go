@@ -221,3 +221,81 @@ func TestMixupRejectsBadInput(t *testing.T) {
 		t.Errorf("Mixup of an empty set returned %d samples, want 0", len(got))
 	}
 }
+
+// TestSmoothLabelsPullsTowardUniform pins the standard one-hot arithmetic:
+// 1 - epsilon + epsilon/k on the true class, epsilon/k elsewhere.
+func TestSmoothLabelsPullsTowardUniform(t *testing.T) {
+	data := DataSet{
+		{Inputs: []float64{1, 2}, Targets: []float64{0, 1, 0}},
+	}
+
+	smoothed := data.SmoothLabels(0.3)
+
+	want := []float64{0.1, 0.8, 0.1}
+	for j, v := range smoothed[0].Targets {
+		if math.Abs(v-want[j]) > 1e-12 {
+			t.Errorf("target[%d] = %g, want %g", j, v, want[j])
+		}
+	}
+}
+
+// TestSmoothLabelsKeepsDistributionsNormalized checks the blend preserves
+// the total: a target that summed to 1 must still sum to 1, since both the
+// original and the uniform point it is pulled toward do.
+func TestSmoothLabelsKeepsDistributionsNormalized(t *testing.T) {
+	data := DataSet{
+		{Inputs: []float64{0}, Targets: []float64{1, 0, 0, 0}},
+		{Inputs: []float64{0}, Targets: []float64{0.5, 0.25, 0.25, 0}}, // already soft
+	}
+
+	for _, ds := range data.SmoothLabels(0.1) {
+		sum := 0.0
+		for _, v := range ds.Targets {
+			sum += v
+		}
+		if math.Abs(sum-1) > 1e-12 {
+			t.Errorf("smoothed targets %v sum to %g, want 1", ds.Targets, sum)
+		}
+	}
+}
+
+// TestSmoothLabelsHandlesSingleOutput pins the k = 1 special case: a lone
+// sigmoid output is a two-outcome distribution in disguise, so it smooths
+// toward 1/2 -- both endpoints must move, and by the same amount.
+func TestSmoothLabelsHandlesSingleOutput(t *testing.T) {
+	data := DataSet{
+		{Inputs: []float64{0}, Targets: []float64{1}},
+		{Inputs: []float64{0}, Targets: []float64{0}},
+	}
+
+	smoothed := data.SmoothLabels(0.2)
+
+	if got, want := smoothed[0].Targets[0], 0.9; math.Abs(got-want) > 1e-12 {
+		t.Errorf("smoothed 1 = %g, want %g", got, want)
+	}
+	if got, want := smoothed[1].Targets[0], 0.1; math.Abs(got-want) > 1e-12 {
+		t.Errorf("smoothed 0 = %g, want %g", got, want)
+	}
+}
+
+// TestSmoothLabelsLeavesSourceDataAlone guards the fresh-copy contract,
+// inputs included.
+func TestSmoothLabelsLeavesSourceDataAlone(t *testing.T) {
+	data := DataSet{
+		{Inputs: []float64{1, 2}, Targets: []float64{0, 1}},
+	}
+
+	smoothed := data.SmoothLabels(0.1)
+	smoothed[0].Inputs[0] = 99
+	smoothed[0].Targets[0] = 99
+
+	if data[0].Inputs[0] != 1 || data[0].Targets[0] != 0 {
+		t.Errorf("source data mutated to %v / %v", data[0].Inputs, data[0].Targets)
+	}
+}
+
+func TestSmoothLabelsRejectsBadEpsilon(t *testing.T) {
+	mustPanicGoneural(t, "zero epsilon", func() { scalerData().SmoothLabels(0) })
+	mustPanicGoneural(t, "epsilon of one", func() { scalerData().SmoothLabels(1) })
+	mustPanicGoneural(t, "negative epsilon", func() { scalerData().SmoothLabels(-0.1) })
+}
