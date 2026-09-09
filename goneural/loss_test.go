@@ -51,7 +51,7 @@ func TestLossFPrimeMatchesNumericGradient(t *testing.T) {
 // TestLossNameRoundTrip guards Save/Load: every named loss must come back
 // out of the registry under the same name.
 func TestLossNameRoundTrip(t *testing.T) {
-	for _, loss := range []Loss{MSE(), CrossEntropy(), MAE(), Huber(), LogCosh(), BinaryCrossEntropy(), Hinge()} {
+	for _, loss := range []Loss{MSE(), CrossEntropy(), MAE(), Huber(), LogCosh(), BinaryCrossEntropy(), Hinge(), Focal()} {
 		got := getLossFromname(loss.Name)
 		if got.Name != loss.Name {
 			t.Errorf("getLossFromname(%q).Name = %q", loss.Name, got.Name)
@@ -106,6 +106,10 @@ func TestClassificationLossFPrimeMatchesNumericGradient(t *testing.T) {
 		{"binary_cross_entropy", BinaryCrossEntropy(), []float64{0.7, 0.2, 0.55}, []float64{1, 0, 1}},
 		{"hinge_violated", Hinge(), []float64{0.3, -0.2, 0.5}, []float64{1, 1, -1}},
 		{"hinge_satisfied", Hinge(), []float64{2.5, 1.4, -3.0}, []float64{1, 1, -1}},
+		{"focal", Focal(), []float64{0.7, 0.2, 0.55}, []float64{1, 0, 1}},
+		{"focal_gamma_half", FocalWithGamma(0.5), []float64{0.7, 0.2, 0.55}, []float64{1, 0, 1}},
+		{"focal_gamma_5", FocalWithGamma(5), []float64{0.7, 0.2, 0.55}, []float64{1, 0, 1}},
+		{"focal_soft_targets", Focal(), []float64{0.7, 0.2, 0.55}, []float64{0.9, 0.05, 0.6}},
 	} {
 		target := matrix.NewFromArray(tc.targets)
 
@@ -237,6 +241,116 @@ func TestHingeLearnsSeparableProblem(t *testing.T) {
 		got := n.Predict(ds.Inputs)[0]
 		if got*ds.Targets[0] <= 0 {
 			t.Errorf("Predict(%v) = %f, want the sign of %f", ds.Inputs, got, ds.Targets[0])
+		}
+	}
+}
+
+// TestFocalReducesToBinaryCrossEntropy pins the claim that gamma 0 is not
+// merely similar to BinaryCrossEntropy but identical, in both the loss and
+// its gradient, hard and soft targets alike.
+func TestFocalReducesToBinaryCrossEntropy(t *testing.T) {
+	flat := FocalWithGamma(0)
+	bce := BinaryCrossEntropy()
+
+	preds := matrix.NewFromArray([]float64{0.7, 0.2, 0.55, 0.99})
+	for _, targets := range [][]float64{
+		{1, 0, 1, 0},
+		{0.9, 0.1, 0.6, 0.3},
+	} {
+		target := matrix.NewFromArray(targets)
+
+		if got, want := flat.F(preds, target), bce.F(preds, target); math.Abs(got-want) > 1e-12 {
+			t.Errorf("targets %v: F = %g, want binary cross-entropy's %g", targets, got, want)
+		}
+
+		gotGrad := flat.FPrime(preds, target).Flatten()
+		wantGrad := bce.FPrime(preds, target).Flatten()
+		for i := range gotGrad {
+			if math.Abs(gotGrad[i]-wantGrad[i]) > 1e-9 {
+				t.Errorf("targets %v: FPrime[%d] = %g, want binary cross-entropy's %g",
+					targets, i, gotGrad[i], wantGrad[i])
+			}
+		}
+	}
+}
+
+// TestFocalQuietensEasyExamples is the property the loss exists for: a
+// confidently correct sample must lose far more of its voice than a hard
+// one, so the easy majority stops drowning out the rare positives.
+func TestFocalQuietensEasyExamples(t *testing.T) {
+	fl := Focal()
+	bce := BinaryCrossEntropy()
+	target := matrix.NewFromArray([]float64{1})
+
+	ratio := func(p float64) float64 {
+		pred := matrix.NewFromArray([]float64{p})
+		return fl.F(pred, target) / bce.F(pred, target)
+	}
+
+	// At gamma 2 the factor is (1 - p)^2 exactly: an easy sample keeps 1%
+	// of its cross-entropy loss, a hard one keeps nearly half.
+	easy, hard := ratio(0.9), ratio(0.3)
+	if math.Abs(easy-0.01) > 1e-9 {
+		t.Errorf("easy sample keeps %g of its loss, want (1-0.9)^2 = 0.01", easy)
+	}
+	if math.Abs(hard-0.49) > 1e-9 {
+		t.Errorf("hard sample keeps %g of its loss, want (1-0.3)^2 = 0.49", hard)
+	}
+}
+
+// TestFocalStaysFinite pins the clamping, exactly as for the binary
+// cross-entropy it generalizes: saturated predictions on the wrong side
+// must produce large but finite losses and gradients.
+func TestFocalStaysFinite(t *testing.T) {
+	loss := Focal()
+
+	pred := matrix.NewFromArray([]float64{0, 1})
+	target := matrix.NewFromArray([]float64{1, 0})
+
+	if f := loss.F(pred, target); math.IsInf(f, 0) || math.IsNaN(f) {
+		t.Errorf("F on saturated wrong predictions = %g, want finite", f)
+	}
+	for i, g := range loss.FPrime(pred, target).Flatten() {
+		if math.IsInf(g, 0) || math.IsNaN(g) {
+			t.Errorf("FPrime[%d] on saturated wrong predictions = %g, want finite", i, g)
+		}
+	}
+}
+
+// TestFocalLearnsRarePositives trains on a lopsided problem -- one
+// positive pattern amid repeated negatives -- end to end through the
+// sigmoid output layer the loss is meant for.
+func TestFocalLearnsRarePositives(t *testing.T) {
+	rand.Seed(7)
+
+	n := New(0.1, Focal(),
+		Layer{Nodes: 2},
+		Layer{Nodes: 6, Activator: Tanh()},
+		Layer{Nodes: 1, Activator: Sigmoid()},
+	)
+
+	// The positive corner appears once for every nine negatives.
+	data := DataSet{{Inputs: []float64{1, 1}, Targets: []float64{1}}}
+	for i := 0; i < 3; i++ {
+		data = append(data,
+			DataSample{Inputs: []float64{0, 0}, Targets: []float64{0}},
+			DataSample{Inputs: []float64{1, 0}, Targets: []float64{0}},
+			DataSample{Inputs: []float64{0, 1}, Targets: []float64{0}},
+		)
+	}
+
+	optimizer := Adam(5)
+	for i := 0; i < 800; i++ {
+		data.Shuffle()
+		optimizer(n, data)
+	}
+
+	if got := n.Predict([]float64{1, 1})[0]; got < 0.7 {
+		t.Errorf("rare positive scored %g, want it found despite the imbalance", got)
+	}
+	for _, negative := range [][]float64{{0, 0}, {1, 0}, {0, 1}} {
+		if got := n.Predict(negative)[0]; got > 0.3 {
+			t.Errorf("negative %v scored %g, want it stayed low", negative, got)
 		}
 	}
 }

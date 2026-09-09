@@ -28,6 +28,7 @@ const (
 	logCosh      lossName = "log_cosh"
 	binaryCE     lossName = "binary_cross_entropy"
 	hinge        lossName = "hinge"
+	focal        lossName = "focal"
 	minLogProb            = 1e-12 // clamps log(0)/divide-by-0 for predictions right at the boundary
 )
 
@@ -47,6 +48,8 @@ func getLossFromname(a lossName) Loss {
 		return BinaryCrossEntropy()
 	case hinge:
 		return Hinge()
+	case focal:
+		return Focal()
 	default:
 		return MSE()
 	}
@@ -280,6 +283,81 @@ func Hinge() Loss {
 				if truth[i]*p < 1 {
 					out[i] = truth[i]
 				}
+			}
+			return matrix.Unflatten(y.Rows, y.Columns, out).
+				Divide(float64(y.Rows * y.Columns))
+		},
+	}
+}
+
+// Focal returns the focal loss with the paper's gamma of 2. Use
+// FocalWithGamma to pick how hard the easy examples are faded out.
+func Focal() Loss {
+	return FocalWithGamma(2)
+}
+
+// FocalWithGamma is binary cross-entropy with each output's term scaled by
+// (1 - p_t)^gamma, where p_t is the probability the network assigned to
+// what actually happened (Lin et al., 2017). The factor fades a sample out
+// as the network gets it right: at gamma 2, an easy output already at
+// p_t = 0.9 contributes 100 times less than under plain cross-entropy,
+// while one at p_t = 0.1 keeps nearly full voice.
+//
+// That rescaling is the fix for drowning-in-the-majority class imbalance.
+// When negatives outnumber positives a thousand to one, BinaryCrossEntropy
+// is dominated by the sea of easy negatives -- each contributes little,
+// but their sum swamps the gradient from the rare positives the network
+// exists to find. Making confident answers quiet leaves training time
+// where the hard cases are, whichever class they belong to.
+//
+// Pair it with a Sigmoid output layer, like the binary cross-entropy it
+// generalizes: gamma 0 is *exactly* BinaryCrossEntropy, and 2 is the
+// paper's default. (This library requires CrossEntropy on Softmax outputs,
+// so multi-class problems use it through independent sigmoid outputs, as
+// the original detection networks did.) Soft targets from Mixup or
+// SmoothLabels are handled by blending the two sides' focal terms. Note
+// that Save/Load round-trips losses by name only, so a loaded network
+// falls back to the default gamma of 2.
+func FocalWithGamma(gamma float64) Loss {
+	if gamma < 0 {
+		panic("goneural: focal gamma must not be negative")
+	}
+
+	// The same clamp as BinaryCrossEntropy, for the same reason: a
+	// saturated sigmoid rounds to exactly 0 or 1 and would hand every
+	// logarithm and division here an infinity.
+	clamp := func(p float64) float64 {
+		return math.Min(math.Max(p, minLogProb), 1-minLogProb)
+	}
+
+	return Loss{
+		Name: focal,
+		F: func(y, yHat matrix.Matrix) float64 {
+			pred := y.Flatten()
+			truth := yHat.Flatten()
+
+			sum := 0.0
+			for i, p := range pred {
+				p = clamp(p)
+				sum -= truth[i]*math.Pow(1-p, gamma)*math.Log(p) +
+					(1-truth[i])*math.Pow(p, gamma)*math.Log(1-p)
+			}
+			return sum / float64(y.Rows)
+		},
+		FPrime: func(y, yHat matrix.Matrix) matrix.Matrix {
+			pred := y.Flatten()
+			truth := yHat.Flatten()
+
+			// Negative gradient w.r.t. the prediction, matching MSE's
+			// descent-direction convention. Each side is cross-entropy's
+			// pull scaled by the focal factor, minus a term from the factor
+			// itself shrinking as p_t improves; at gamma 0 the correction
+			// vanishes and this is BinaryCrossEntropy's (t - p)/(p(1-p)).
+			out := make([]float64, len(pred))
+			for i, p := range pred {
+				p = clamp(p)
+				out[i] = truth[i]*math.Pow(1-p, gamma-1)*((1-p)/p-gamma*math.Log(p)) -
+					(1-truth[i])*math.Pow(p, gamma-1)*(p/(1-p)-gamma*math.Log(1-p))
 			}
 			return matrix.Unflatten(y.Rows, y.Columns, out).
 				Divide(float64(y.Rows * y.Columns))
