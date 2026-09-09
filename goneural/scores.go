@@ -86,35 +86,7 @@ func (n *NeuralNetwork) TopKAccuracy(dataSet DataSet, k int) float64 {
 // together they leave the area alone. A data set with no positives or no
 // negatives has no ROC curve at all, and scores 0.
 func (n *NeuralNetwork) ROCAUC(dataSet DataSet, class int) float64 {
-	outputs := n.Layers[len(n.Layers)-1].Nodes
-	if class < 0 || (outputs == 1 && class > 1) || (outputs > 1 && class >= outputs) {
-		panic("goneural: ROCAUC class out of range")
-	}
-
-	type scored struct {
-		score    float64
-		positive bool
-	}
-
-	samples := make([]scored, 0, len(dataSet))
-	positives := 0
-	for _, ds := range dataSet {
-		prediction := n.Predict(ds.Inputs)
-
-		score := prediction[0]
-		if outputs > 1 {
-			score = prediction[class]
-		} else if class == 0 {
-			score = 1 - score // rank by the complement of the positive score
-		}
-
-		positive := classOf(ds.Targets) == class
-		if positive {
-			positives++
-		}
-		samples = append(samples, scored{score: score, positive: positive})
-	}
-
+	samples, positives := n.scoreByClass(dataSet, class, "ROCAUC")
 	negatives := len(samples) - positives
 	if positives == 0 || negatives == 0 {
 		return 0
@@ -147,6 +119,102 @@ func (n *NeuralNetwork) ROCAUC(dataSet DataSet, class int) float64 {
 
 	u := rankSum - float64(positives*(positives+1))/2
 	return u / float64(positives*negatives)
+}
+
+// AveragePrecision returns the area under the precision-recall curve for
+// one class -- the precision averaged over the recall it is achieved at.
+//
+// It is the companion ROCAUC needs when positives are rare, because ROC's
+// indifference to class imbalance is also its blind spot. With one
+// positive per thousand samples, a network whose top fifty picks are all
+// false alarms can still post an excellent ROCAUC -- fifty false positives
+// barely dent a specificity computed over 999 negatives. Precision asks
+// the question the operator of a rare-event detector actually cares about:
+// of the ones flagged, how many were real? Every false alarm at the top of
+// the ranking costs this score directly, however many negatives exist.
+//
+// A perfect ranking scores 1. Chance is not 0.5 but the prevalence of the
+// class -- score everything identically and precision is the base rate at
+// every recall -- so read the score against that baseline: 0.3 is dismal
+// for a balanced class and a large lift for a 1-in-1000 one.
+//
+// Scores are read per class exactly as in ROCAUC, single-output binary
+// networks included. The curve is walked stepwise from the top of the
+// ranking, accumulating precision times the recall gained at each distinct
+// score, with tied samples entering together -- a threshold cannot admit
+// half a tie. A data set with no positives has no curve at all, and
+// scores 0.
+func (n *NeuralNetwork) AveragePrecision(dataSet DataSet, class int) float64 {
+	samples, positives := n.scoreByClass(dataSet, class, "AveragePrecision")
+	if positives == 0 {
+		return 0
+	}
+
+	sort.Slice(samples, func(i, j int) bool { return samples[i].score > samples[j].score })
+
+	area := 0.0
+	flagged, truePositives := 0, 0
+	previousRecall := 0.0
+
+	for i := 0; i < len(samples); {
+		j := i
+		for j < len(samples) && samples[j].score == samples[i].score {
+			if samples[j].positive {
+				truePositives++
+			}
+			j++
+		}
+		flagged = j
+
+		recall := float64(truePositives) / float64(positives)
+		precision := float64(truePositives) / float64(flagged)
+		area += (recall - previousRecall) * precision
+
+		previousRecall = recall
+		i = j
+	}
+
+	return area
+}
+
+// classScored pairs one sample's score for a class with whether the sample
+// truly belongs to it.
+type classScored struct {
+	score    float64
+	positive bool
+}
+
+// scoreByClass runs the network over the data set and reads off each
+// sample's score for one class, along with how many samples truly belong
+// to it -- the shared setup of the ranking scores above. For single-output
+// binary networks class 1 is scored directly and class 0 by the complement
+// 1 - p, so both views of the same network are available.
+func (n *NeuralNetwork) scoreByClass(dataSet DataSet, class int, caller string) ([]classScored, int) {
+	outputs := n.Layers[len(n.Layers)-1].Nodes
+	if class < 0 || (outputs == 1 && class > 1) || (outputs > 1 && class >= outputs) {
+		panic("goneural: " + caller + " class out of range")
+	}
+
+	samples := make([]classScored, 0, len(dataSet))
+	positives := 0
+	for _, ds := range dataSet {
+		prediction := n.Predict(ds.Inputs)
+
+		score := prediction[0]
+		if outputs > 1 {
+			score = prediction[class]
+		} else if class == 0 {
+			score = 1 - score // rank by the complement of the positive score
+		}
+
+		positive := classOf(ds.Targets) == class
+		if positive {
+			positives++
+		}
+		samples = append(samples, classScored{score: score, positive: positive})
+	}
+
+	return samples, positives
 }
 
 // R2Score is the coefficient of determination for regression outputs: the

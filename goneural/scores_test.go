@@ -313,3 +313,122 @@ func TestMatthewsCorrCoefMatchesBinaryFormula(t *testing.T) {
 		t.Errorf("MatthewsCorrCoef = %g, want the binary formula's %g", got, want)
 	}
 }
+
+// TestAveragePrecisionPerfectRankingIsOne pins the top of the scale: every
+// positive scored above every negative earns full precision at every
+// recall.
+func TestAveragePrecisionPerfectRankingIsOne(t *testing.T) {
+	n := scoringNetwork()
+
+	data := DataSet{
+		{Inputs: []float64{0.9}, Targets: []float64{1}},
+		{Inputs: []float64{0.8}, Targets: []float64{1}},
+		{Inputs: []float64{0.3}, Targets: []float64{0}},
+		{Inputs: []float64{0.2}, Targets: []float64{0}},
+		{Inputs: []float64{0.1}, Targets: []float64{0}},
+	}
+
+	if got := n.AveragePrecision(data, 1); math.Abs(got-1) > 1e-12 {
+		t.Errorf("AveragePrecision of a perfect ranking = %g, want 1", got)
+	}
+}
+
+// TestAveragePrecisionMatchesHandComputedCurve walks a small interleaved
+// ranking by hand: positives at ranks 1 and 3 give precision 1 at recall
+// 1/2 and precision 2/3 at recall 1, so the stepwise area is
+// 0.5*1 + 0.5*(2/3).
+func TestAveragePrecisionMatchesHandComputedCurve(t *testing.T) {
+	n := scoringNetwork()
+
+	data := DataSet{
+		{Inputs: []float64{0.9}, Targets: []float64{1}},
+		{Inputs: []float64{0.8}, Targets: []float64{0}},
+		{Inputs: []float64{0.7}, Targets: []float64{1}},
+		{Inputs: []float64{0.6}, Targets: []float64{0}},
+	}
+
+	if got, want := n.AveragePrecision(data, 1), 0.5+1.0/3; math.Abs(got-want) > 1e-12 {
+		t.Errorf("AveragePrecision = %g, want the hand-computed %g", got, want)
+	}
+}
+
+// TestAveragePrecisionChanceIsPrevalence pins the baseline the score must
+// be read against: a network that cannot separate the classes at all --
+// every sample tied -- lands at the positive rate, not at 0.5.
+func TestAveragePrecisionChanceIsPrevalence(t *testing.T) {
+	n := constantNetwork([]float64{0.7})
+
+	data := DataSet{
+		{Inputs: []float64{0}, Targets: []float64{1}},
+		{Inputs: []float64{0}, Targets: []float64{0}},
+		{Inputs: []float64{0}, Targets: []float64{0}},
+		{Inputs: []float64{0}, Targets: []float64{0}},
+		{Inputs: []float64{0}, Targets: []float64{0}},
+	}
+
+	if got, want := n.AveragePrecision(data, 1), 0.2; math.Abs(got-want) > 1e-12 {
+		t.Errorf("AveragePrecision with all scores tied = %g, want the prevalence %g", got, want)
+	}
+}
+
+// TestAveragePrecisionScoresTheComplementClass checks the binary view from
+// the other side: on a single-output network class 0 is ranked by 1 - p,
+// so a ranking perfect for class 1 is perfect for class 0 as well.
+func TestAveragePrecisionScoresTheComplementClass(t *testing.T) {
+	n := scoringNetwork()
+
+	data := DataSet{
+		{Inputs: []float64{0.9}, Targets: []float64{1}},
+		{Inputs: []float64{0.8}, Targets: []float64{1}},
+		{Inputs: []float64{0.2}, Targets: []float64{0}},
+		{Inputs: []float64{0.1}, Targets: []float64{0}},
+	}
+
+	if got := n.AveragePrecision(data, 0); math.Abs(got-1) > 1e-12 {
+		t.Errorf("AveragePrecision for class 0 = %g, want 1", got)
+	}
+}
+
+// TestAveragePrecisionRewardsEarlyPrecision separates two rankings ROCAUC
+// ties apart less sharply: pushing the lone positive from the top of a
+// short list to the bottom collapses the score toward zero.
+func TestAveragePrecisionRewardsEarlyPrecision(t *testing.T) {
+	n := scoringNetwork()
+
+	top := DataSet{
+		{Inputs: []float64{0.9}, Targets: []float64{1}},
+		{Inputs: []float64{0.5}, Targets: []float64{0}},
+		{Inputs: []float64{0.4}, Targets: []float64{0}},
+		{Inputs: []float64{0.3}, Targets: []float64{0}},
+	}
+	bottom := DataSet{
+		{Inputs: []float64{0.9}, Targets: []float64{0}},
+		{Inputs: []float64{0.5}, Targets: []float64{0}},
+		{Inputs: []float64{0.4}, Targets: []float64{0}},
+		{Inputs: []float64{0.3}, Targets: []float64{1}},
+	}
+
+	if got := n.AveragePrecision(top, 1); math.Abs(got-1) > 1e-12 {
+		t.Errorf("positive ranked first = %g, want 1", got)
+	}
+	if got, want := n.AveragePrecision(bottom, 1), 0.25; math.Abs(got-want) > 1e-12 {
+		t.Errorf("positive ranked last = %g, want precision at full recall, %g", got, want)
+	}
+}
+
+// TestAveragePrecisionHandlesDegenerateSets pins the no-curve case and the
+// class bounds.
+func TestAveragePrecisionHandlesDegenerateSets(t *testing.T) {
+	n := scoringNetwork()
+
+	noPositives := DataSet{
+		{Inputs: []float64{0.9}, Targets: []float64{0}},
+		{Inputs: []float64{0.1}, Targets: []float64{0}},
+	}
+	if got := n.AveragePrecision(noPositives, 1); got != 0 {
+		t.Errorf("AveragePrecision with no positives = %g, want 0", got)
+	}
+
+	mustPanicGoneural(t, "class out of range", func() { n.AveragePrecision(noPositives, 2) })
+	mustPanicGoneural(t, "negative class", func() { n.AveragePrecision(noPositives, -1) })
+}
