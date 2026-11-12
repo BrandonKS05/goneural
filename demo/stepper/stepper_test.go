@@ -39,6 +39,44 @@ func TestVocabularyRejectsBadWords(t *testing.T) {
 	}
 }
 
+// The page shows these messages as they are, so each bad word has to be
+// refused for the reason a visitor would recognize.
+func TestVocabularyErrorMessages(t *testing.T) {
+	const (
+		empty   = "Type a word first."
+		letters = "Use only the letters a to z."
+		long    = "Keep it to 8 letters or fewer."
+	)
+
+	cases := []struct {
+		word string
+		want string
+	}{
+		{"", empty},
+		{"Hello", letters},
+		{"hi there", letters},
+		{"a1", letters},
+		{"abcdefghi", long},
+		{"abcdefghijklmnop", long},
+		// Eight letters, but nine bytes: the ñ is the problem, not the length.
+		{"señorita", letters},
+		// Too long and not all letters: either answer is true, and the
+		// letters come first.
+		{"abcdefgh1", letters},
+	}
+
+	for _, c := range cases {
+		_, _, err := Vocabulary(c.word)
+		if err == nil {
+			t.Errorf("Vocabulary(%q) succeeded, want %q", c.word, c.want)
+			continue
+		}
+		if err.Error() != c.want {
+			t.Errorf("Vocabulary(%q) = %q, want %q", c.word, err.Error(), c.want)
+		}
+	}
+}
+
 func TestInitialWeights(t *testing.T) {
 	s, _ := New("hello", 3)
 	snapshot := s.Snapshot()

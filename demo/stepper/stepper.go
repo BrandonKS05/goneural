@@ -164,6 +164,14 @@ func Vocabulary(word string) (vocab []string, pairs []Pair, err error) {
 	if word == "" {
 		return nil, nil, errors.New("Type a word first.")
 	}
+	// Letters are checked before length, which counts bytes: a word like
+	// "señorita" is eight letters but nine bytes, and should be refused for
+	// its ñ rather than for being too long.
+	for i := 0; i < len(word); i++ {
+		if c := word[i]; c < 'a' || c > 'z' {
+			return nil, nil, errors.New("Use only the letters a to z.")
+		}
+	}
 	if len(word) > MaxWordLength {
 		return nil, nil, errors.New("Keep it to 8 letters or fewer.")
 	}
@@ -174,9 +182,6 @@ func Vocabulary(word string) (vocab []string, pairs []Pair, err error) {
 
 	for i := 0; i < len(word); i++ {
 		c := word[i]
-		if c < 'a' || c > 'z' {
-			return nil, nil, errors.New("Use only the letters a to z.")
-		}
 		id, ok := ids[c]
 		if !ok {
 			id = len(vocab)
