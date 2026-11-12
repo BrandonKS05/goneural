@@ -44,6 +44,10 @@ main {
   margin: 0 auto;
   padding: 20px 16px 32px;
   display: grid;
+  /* A zero minimum lets the column go narrower than its widest child asks
+     for (the text box wants room for 20 characters), so phones under 356px
+     wide don't scroll sideways. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 
