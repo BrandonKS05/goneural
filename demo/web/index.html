@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Watch a tiny language model learn</title>
+<meta name="description" content="Step through the training of a tiny next-letter language model, one stage at a time. Every number is computed by goneural, a from-scratch Go neural network library, running as WebAssembly.">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="loading">
+<main>
+  <header>
+    <h1>Watch a tiny language model learn</h1>
+    <p class="lede">It reads one letter and guesses the next. Every number here is computed by <a href="https://github.com/BrandonKS05/goneural">goneural</a>, a neural network library written from scratch in Go, running in your browser as WebAssembly.</p>
+  </header>
+
+  <section class="panel" aria-label="Training">
+    <div id="word" class="word" aria-label="The word being learned"></div>
+
+    <ol id="stages" class="stages" aria-label="Stages of one training step">
+      <li data-stage="forward">Forward</li>
+      <li data-stage="loss">Loss</li>
+      <li data-stage="backward">Backward</li>
+      <li data-stage="update">Update</li>
+    </ol>
+
+    <figure class="network">
+      <svg id="net" viewBox="0 0 380 164" role="img" aria-label="The network: input letters, four hidden units, output letters"></svg>
+      <figcaption class="legend">
+        <span><svg viewBox="0 0 22 8" aria-hidden="true"><line class="wire" x1="1" y1="4" x2="21" y2="4" stroke-width="3"/></svg>weight (thicker is larger)</span>
+        <span><svg viewBox="0 0 22 8" aria-hidden="true"><line class="wire signal" x1="1" y1="4" x2="21" y2="4" stroke-width="3"/></svg>signal</span>
+        <span><svg viewBox="0 0 22 8" aria-hidden="true"><line class="wire blame" x1="1" y1="4" x2="21" y2="4" stroke-width="3"/></svg>blame</span>
+      </figcaption>
+    </figure>
+
+    <p id="caption" class="caption" aria-live="polite">Loading the Go library…</p>
+
+    <div class="controls">
+      <button id="step" type="button" disabled>Step</button>
+      <button id="play" type="button" class="primary" disabled>Play</button>
+      <button id="speed" type="button" class="stacked" aria-pressed="false" disabled><small>Speed</small><span id="speed-value">Slow</span></button>
+      <button id="reset" type="button" disabled>Reset</button>
+    </div>
+  </section>
+
+  <section class="panel results" aria-label="Results">
+    <div class="writes">
+      <span class="label">Model writes</span>
+      <output id="sample" class="sample">&nbsp;</output>
+    </div>
+    <dl class="losses">
+      <div><dt>Average loss</dt><dd id="average">–</dd></div>
+      <div><dt>Best possible</dt><dd id="best">–</dd></div>
+      <div><dt>Steps</dt><dd id="updates">0</dd></div>
+    </dl>
+    <svg id="chart" class="chart" viewBox="0 0 380 112" role="img" aria-label="Average loss over training steps"></svg>
+  </section>
+
+  <form id="word-form" class="panel own-word" novalidate>
+    <label for="word-input">Train on your own word</label>
+    <div class="row">
+      <input id="word-input" name="word" type="text" inputmode="text" maxlength="8"
+             autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"
+             placeholder="hello" aria-describedby="word-hint word-error">
+      <button id="train" type="submit" disabled>Train</button>
+    </div>
+    <p id="word-error" class="error" role="alert" hidden></p>
+    <p id="word-hint" class="hint">Up to 8 letters, a to z. Try one with a repeated letter, like <i>banana</i>: the model only sees one letter at a time, so it can't know which <i>a</i> it is on.</p>
+  </form>
+
+  <footer>
+    <p id="spec">One-hot letter in, 4 tanh hidden units, softmax out. Cross-entropy loss, plain SGD.</p>
+  </footer>
+</main>
+
+<script src="wasm_exec.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

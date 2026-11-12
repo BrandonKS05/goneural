@@ -1,0 +1,357 @@
+:root {
+  --bg: #f5f4ef;
+  --surface: #ffffff;
+  --ink: #1d1c1a;
+  --muted: #68665f;
+  --rule: #dcd9cf;
+  --wire: #8f8c84;
+  --teal: #0b877c;
+  --teal-soft: rgba(11, 135, 124, 0.13);
+  --coral: #d9512f;
+  --coral-soft: rgba(217, 81, 47, 0.12);
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121413;
+    --surface: #1b1e1d;
+    --ink: #eceae4;
+    --muted: #9c9a91;
+    --rule: #303432;
+    --wire: #7d817e;
+    --teal: #48cfc1;
+    --teal-soft: rgba(72, 207, 193, 0.16);
+    --coral: #ff8c6f;
+    --coral-soft: rgba(255, 140, 111, 0.15);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.45 var(--sans);
+}
+
+main {
+  max-width: 540px;
+  margin: 0 auto;
+  padding: 20px 16px 32px;
+  display: grid;
+  /* A zero minimum lets the column go narrower than its widest child asks
+     for (the text box wants room for 20 characters), so phones under 356px
+     wide don't scroll sideways. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+
+h1 {
+  margin: 0 0 6px;
+  font-size: 1.45rem;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.lede { margin: 0; color: var(--muted); }
+a { color: var(--teal); }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+/* The word, one box per character */
+
+.word {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding-bottom: 18px;
+}
+
+.word span {
+  position: relative;
+  flex: 0 1 34px;
+  min-width: 0;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--rule);
+  border-radius: 7px;
+  font: 600 1.1rem var(--mono);
+}
+
+.word .marker { color: var(--muted); }
+
+.word .in {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.word .want { border-color: var(--ink); border-width: 2px; }
+
+.word .in::after,
+.word .want::after {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 3px;
+  font: 500 0.68rem var(--sans);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.word .in::after { content: "in"; color: var(--teal); }
+.word .want::after { content: "next"; color: var(--ink); }
+
+/* Stage chips */
+
+.stages {
+  list-style: none;
+  margin: 10px 0 6px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.stages li {
+  padding: 5px 0;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.stages li[aria-current="step"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--surface);
+}
+
+/* Network */
+
+.network { margin: 0; }
+
+#net, .chart { display: block; width: 100%; height: auto; }
+
+.wire {
+  stroke: var(--wire);
+  stroke-opacity: 0.5;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.wire.signal { stroke: var(--teal); stroke-opacity: 1; }
+.wire.blame { stroke: var(--coral); stroke-opacity: 1; }
+.wire.changed { stroke: var(--ink); stroke-opacity: 1; }
+
+body:not(.fast) #net .wire { transition: stroke-width 0.2s ease; }
+
+.unit {
+  fill: var(--surface);
+  stroke: var(--wire);
+  stroke-width: 1.5;
+}
+
+.unit.active { fill: var(--teal-soft); stroke: var(--teal); stroke-width: 2; }
+.unit.lit { stroke: var(--teal); }
+.unit.want { stroke: var(--ink); stroke-width: 2.5; }
+
+#net text, .chart text { fill: var(--ink); font-family: var(--sans); }
+
+#net .glyph {
+  font: 600 13px var(--mono);
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+#net .glyph.marker { fill: var(--muted); }
+
+#net .activation {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+#net .heading, .chart .axis {
+  fill: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+#net .percent {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-anchor: end;
+  dominant-baseline: central;
+}
+
+.bar-track { fill: var(--rule); opacity: 0.55; }
+.bar { fill: var(--wire); }
+.bar.live { fill: var(--teal); }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 14px;
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend svg { width: 22px; height: 8px; }
+
+/* Caption */
+
+.caption {
+  margin: 12px 0;
+  min-height: 4.35em; /* three lines, so the controls never jump */
+  padding: 9px 11px;
+  border-left: 3px solid var(--rule);
+  border-radius: 4px;
+  background: var(--bg);
+}
+
+.caption b { font-weight: 650; }
+.caption[data-stage="forward"], .caption[data-stage="loss"] { border-left-color: var(--teal); }
+.caption[data-stage="backward"] { border-left-color: var(--coral); }
+.caption[data-stage="update"] { border-left-color: var(--ink); }
+.caption[data-stage="error"] { border-left-color: var(--coral); color: var(--coral); }
+
+/* Controls */
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+button, input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: 9px;
+  background: var(--surface);
+  font-weight: 550;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+button:hover:not(:disabled) { border-color: var(--wire); }
+button:active:not(:disabled) { background: var(--bg); }
+button:disabled { opacity: 0.45; cursor: default; }
+
+button.primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--surface);
+}
+
+button.primary:active:not(:disabled) { background: var(--ink); opacity: 0.85; }
+
+button.stacked { display: grid; align-content: center; line-height: 1.15; }
+
+button.stacked small {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+button[aria-pressed="true"] {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+  color: var(--teal);
+}
+
+:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+/* Results */
+
+.label, .losses dt, .own-word label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.writes { display: flex; align-items: baseline; gap: 12px; }
+
+.sample {
+  min-width: 0;
+  font: 600 1.5rem/1.2 var(--mono);
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
+
+.sample.empty { color: var(--muted); font-weight: 400; font-size: 1rem; letter-spacing: 0; }
+
+.losses {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+
+.losses dd {
+  margin: 0;
+  font: 600 1.1rem var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart .trace { fill: none; stroke: var(--teal); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.chart .floor { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 4 3; }
+.chart .base { stroke: var(--rule); stroke-width: 1; }
+
+/* Own word */
+
+.own-word label { display: block; margin-bottom: 6px; }
+.own-word .row { display: flex; gap: 6px; }
+
+.own-word input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: 9px;
+  background: var(--bg);
+  font: 500 1rem var(--mono); /* 16px or more, so iOS does not zoom on focus */
+}
+
+.own-word input[aria-invalid="true"] { border-color: var(--coral); }
+.own-word button { padding: 0 18px; }
+
+.error { margin: 7px 0 0; color: var(--coral); font-size: 0.88rem; font-weight: 500; }
+.hint { margin: 7px 0 0; color: var(--muted); font-size: 0.82rem; }
+
+footer { color: var(--muted); font-size: 0.78rem; text-align: center; }
+footer p { margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  #net .wire { transition: none !important; }
+}
