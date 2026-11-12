@@ -5,3 +5,6 @@ logs/
 
 # Tooling scratch
 .playwright-mcp/
+
+# Demo build output
+demo/dist/

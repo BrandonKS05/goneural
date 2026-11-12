@@ -161,6 +161,38 @@ for _, block := range blocks {
 logits := readout.Forward(finalNorm.Forward(x))
 ```
 
+## Interactive demo
+
+`demo/` is a web page that trains a tiny next-letter language model on one
+short word, one stage at a time -- forward, loss, backward, update -- and
+draws what each stage did to the network. Every number on the page comes
+from this library, compiled to WebAssembly; the JavaScript only draws.
+
+```bash
+./demo/build.sh        # compile to demo/dist
+go run ./demo/serve    # serve it at http://localhost:8080
+```
+
+`demo/dist` is a self-contained static folder (`index.html`, `style.css`,
+`app.js`, `main.wasm`, and the `wasm_exec.js` loader copied from the Go
+toolchain that did the build), so it can be hosted anywhere that serves
+files. It has to be served over HTTP; browsers will not load WebAssembly
+from a `file://` page.
+
+- `demo/stepper` — the model (an `autograd.Embedding`, a tanh layer and a
+  `Linear` readout, trained with `autograd.SGD`) and a `Stepper` that makes
+  the four calls of an ordinary training step one at a time, with a
+  `Snapshot` of every activation, weight and gradient in between. Its tests
+  check that the four stages leave the weights bit-for-bit identical to the
+  normal training loop from the same seed, and that the reported gradients
+  match finite differences.
+- `demo/wasm` — the `syscall/js` bridge (`GOOS=js GOARCH=wasm`).
+- `demo/web` — the page: plain HTML, CSS and JavaScript.
+- `demo/serve` — a few lines of `net/http` for local use.
+
+Add `?word=banana` to the URL to start on another word, and `?seed=7` to
+make the initial weights reproducible.
+
 ## Requirements
 
 Go 1.21+ (see `go.mod`).
