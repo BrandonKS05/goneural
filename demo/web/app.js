@@ -288,7 +288,11 @@
         const c = snap.lastChange;
         const from = c.layer === "inputHidden" ? letterName(c.from, false) : `hidden ${c.from + 1}`;
         const to = c.layer === "inputHidden" ? `hidden ${c.to + 1}` : letterName(c.to, true);
-        setCaption("update", "Update:", `biggest change: ${from} → ${to} went from ${num(c.old)} to ${num(c.new)}.`);
+        // Late in training even the biggest change is tiny, so show as many
+        // digits as it takes for the two values to read differently.
+        let digits = 2;
+        while (digits < 5 && num(c.old, digits) === num(c.new, digits)) digits++;
+        setCaption("update", "Update:", `biggest change: ${from} → ${to} went from ${num(c.old, digits)} to ${num(c.new, digits)}.`);
         break;
       }
     }
